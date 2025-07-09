@@ -6,7 +6,7 @@ export default function CoursesManager() {
   const [editId, setEditId] = useState(null);
 
   useEffect(() => {
-    fetch("/api/admin/courses").then(res => res.json()).then(setCourses);
+    fetch("http://localhost:3001/api/admin/courses").then(res => res.json()).then(setCourses);
   }, []);
 
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
@@ -14,7 +14,7 @@ export default function CoursesManager() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (editId) {
-      const res = await fetch("/api/admin/courses", {
+      const res = await fetch("http://localhost:3001/api/admin/courses", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: editId, ...form }),
@@ -26,7 +26,7 @@ export default function CoursesManager() {
         setForm({ name: "", description: "" });
       }
     } else {
-      const res = await fetch("/api/admin/courses", {
+      const res = await fetch("http://localhost:3001/api/admin/courses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -44,7 +44,7 @@ export default function CoursesManager() {
   };
 
   const handleDelete = async (id) => {
-    await fetch("/api/admin/courses", {
+    await fetch("http://localhost:3001/api/admin/courses", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),

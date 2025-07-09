@@ -6,7 +6,7 @@ export default function StudentsManager() {
   const [editId, setEditId] = useState(null);
 
   useEffect(() => {
-    fetch("/api/admin/students").then(res => res.json()).then(setStudents);
+    fetch("http://localhost:3001/api/admin/staff").then(res => res.json()).then(setStudents);
   }, []);
 
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
@@ -14,7 +14,7 @@ export default function StudentsManager() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (editId) {
-      const res = await fetch("/api/admin/students", {
+      const res = await fetch("http://localhost:3001/api/admin/staff", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: editId, ...form }),
@@ -26,7 +26,7 @@ export default function StudentsManager() {
         setForm({ name: "", email: "", password: "", phone: "" });
       }
     } else {
-      const res = await fetch("/api/admin/students", {
+      const res = await fetch("http://localhost:3001/api/admin/staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -44,7 +44,7 @@ export default function StudentsManager() {
   };
 
   const handleDelete = async (id) => {
-    await fetch("/api/admin/students", {
+    await fetch("http://localhost:3001/api/admin/staff", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),

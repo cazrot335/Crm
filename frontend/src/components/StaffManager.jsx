@@ -14,7 +14,7 @@ export default function StaffManager() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (editId) {
-      const res = await fetch("/api/admin/staff", {
+      const res = await fetch("http://localhost:3001/api/admin/staff", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: editId, ...form }),
@@ -26,7 +26,7 @@ export default function StaffManager() {
         setForm({ name: "", email: "", password: "", phone: "" });
       }
     } else {
-      const res = await fetch("/api/admin/staff", {
+      const res = await fetch("http://localhost:3001/api/admin/staff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -44,7 +44,7 @@ export default function StaffManager() {
   };
 
   const handleDelete = async (id) => {
-    await fetch("/api/admin/staff", {
+    await fetch("http://localhost:3001/api/admin/staff", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),

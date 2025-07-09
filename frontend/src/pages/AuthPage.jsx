@@ -16,29 +16,26 @@ export default function AuthPage({ onLogin }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
-    if (role === "staff") {
-      if (email === STAFF_EMAIL && password === STAFF_PASSWORD) {
-        onLogin({ role: "staff", email, name: "Staff" });
-      } else {
-        setError("Invalid staff credentials");
+    try {
+      const res = await fetch("http://localhost:3001/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Login failed");
+        return;
       }
-    } else {
-      try {
-        const res = await fetch("http://localhost:3001/api/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          setError(data.error || "Login failed");
-          return;
-        }
-        const user = await res.json();
-        onLogin(user);
-      } catch {
-        setError("Network error");
+      const user = await res.json();
+      // Only allow login if role matches selected role
+      if (user.role.toLowerCase() !== role) {
+        setError("Invalid credentials for selected role");
+        return;
       }
+      onLogin(user);
+    } catch {
+      setError("Network error");
     }
   };
 
