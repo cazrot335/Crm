@@ -1,0 +1,89 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  name     String
+  email    String @unique
+  password String
+  phone    String?
+  role     Role   @default(STAFF)
+  leads    Lead[] @relation("UserLeads")
+  courses  CourseEnrollment[]
+}
+
+model Lead {
+  id             Int         @id @default(autoincrement())
+  name           String
+  email          String
+  phone          String
+  parentContact  String?
+  courseInterest String
+  source         String
+  status         LeadStatus  @default(NEW)
+  assignedTo     User?       @relation("UserLeads", fields: [assignedToId], references: [id])
+  assignedToId   Int?
+  createdAt      DateTime    @default(now())
+  followUps      FollowUp[]
+  admission      Deal?
+}
+
+model FollowUp {
+  id      Int      @id @default(autoincrement())
+  date    DateTime
+  type    String   // e.g., Call, Email, Visit
+  remarks String
+  lead    Lead     @relation(fields: [leadId], references: [id])
+  leadId  Int
+}
+
+model Deal {
+  id      Int    @id @default(autoincrement())
+  course  String
+  fee     Float
+  status  String // admitted, rejected, pending
+  lead    Lead   @relation(fields: [leadId], references: [id])
+  leadId  Int    @unique
+}
+
+model Course {
+  id          Int    @id @default(autoincrement())
+  name        String
+  description String?
+  enrollments CourseEnrollment[]
+}
+
+model CourseEnrollment {
+  id        Int    @id @default(autoincrement())
+  student   User   @relation(fields: [studentId], references: [id])
+  studentId Int
+  course    Course @relation(fields: [courseId], references: [id])
+  courseId  Int
+  status    LeadStatus @default(NEW)
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  STUDENT
+}
+
+enum LeadStatus {
+  NEW
+  IN_PROGRESS
+  ADMITTED
+  REJECTED
+}
