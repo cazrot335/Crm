@@ -15,7 +15,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { messages, model } = req.body;
 
-    const response = await fetch('https://router.huggingface.co/fireworks-ai/inference/v1/chat/completions', {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.HF_API_KEY}`,

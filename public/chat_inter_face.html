@@ -3,10 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Scholarship Chatbot</title>
+  <title>ScholarBot</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    /* Style bullets and numbered lists */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(59, 130, 246, 0.4);
+      border-radius: 10px;
+    }
+
     .chat-box ul {
       list-style-type: disc;
       padding-left: 1.25rem;
@@ -25,12 +33,21 @@
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-100 to-white min-h-screen flex items-center justify-center p-4">
-  <div class="w-full max-w-xl bg-white shadow-xl rounded-2xl p-6">
-    <h1 class="text-3xl font-bold text-center text-blue-700 mb-4">🎓 ScholarBot</h1>
-    <div id="chatBox" class="chat-box h-96 overflow-y-auto border border-gray-300 rounded p-4 bg-gray-50 text-sm mb-4 space-y-4"></div>
-    <form id="chatForm" class="flex">
-      <input type="text" id="userInput" class="flex-grow border border-gray-300 rounded-l px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Type your question..." required />
-      <button type="submit" class="bg-blue-600 text-white px-5 py-2 rounded-r hover:bg-blue-700">Send</button>
+  <div class="w-full max-w-2xl backdrop-blur-md bg-white/60 border border-gray-200 shadow-2xl rounded-3xl p-6">
+    <h1 class="text-4xl font-extrabold text-center text-blue-700 mb-6">🎓 ScholarBot</h1>
+    
+    <div id="chatBox" class="chat-box h-[28rem] overflow-y-auto space-y-4 px-3 py-4 bg-white rounded-xl border border-gray-300 shadow-inner text-base">
+      <!-- Chat messages will appear here -->
+    </div>
+
+    <form id="chatForm" class="flex mt-4">
+      <input type="text" id="userInput" 
+             class="flex-grow rounded-l-xl border border-gray-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-400" 
+             placeholder="Ask about scholarships, countries, streams..." required />
+      <button type="submit" 
+              class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-r-xl text-base font-medium">
+        Send
+      </button>
     </form>
   </div>
 
@@ -46,33 +63,57 @@
       "✈️ Welcome! I help students like you find the best scholarships to study overseas. What field are you in?"
     ];
 
-    // Initial greeting
+    const chatHistory = [
+      {
+        role: "system",
+        content: `
+You are a friendly, empathetic assistant named ScholarBot who helps students find scholarships to study abroad.
+You greet users warmly, ask about their academic background, preferred countries, and career goals.
+You make helpful suggestions and format your responses as neat bullet or numbered lists.
+Be clear and concise, but encouraging.`
+      },
+      {
+        role: "system",
+        content: `
+If a user mentions their stream (engineering, medicine, arts), suggest relevant scholarships and countries in point format.
+If they mention countries (UK, Canada, Germany), suggest country-specific scholarships.
+Always respond with clearly formatted, structured information.`
+      }
+    ];
+
     window.addEventListener("DOMContentLoaded", () => {
       const greeting = greetings[Math.floor(Math.random() * greetings.length)];
       addMessage("ScholarBot", greeting);
+      chatHistory.push({ role: "assistant", content: greeting });
     });
 
-    // Markdown-like formatter: converts - or * into bullets, 1. into numbers
     function formatMessage(content) {
       let html = content
-        .replace(/^[-*]\s+(.*)$/gm, '<li>$1</li>')        // Bullets
-        .replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>');      // Numbers
+        .replace(/^[-*]\s+(.*)$/gm, '<li>$1</li>')
+        .replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>');
 
-      // Wrap bullets with <ul> or <ol>
       if (html.match(/<li>/)) {
         const isOrdered = content.trim().match(/^\d+\./);
         const wrapper = isOrdered ? "ol" : "ul";
         html = `<${wrapper}>${html}</${wrapper}>`;
       }
 
-      return html.replace(/\n/g, "<br>"); // Preserve line breaks
+      return html.replace(/\n/g, "<br>");
     }
 
     function addMessage(sender, message) {
       const msgDiv = document.createElement("div");
+      const isBot = sender === "ScholarBot";
       const formatted = formatMessage(message);
-      msgDiv.innerHTML = `<div><strong class="text-blue-700">${sender}:</strong><br>${formatted}</div>`;
-      chatBox.appendChild(msgDiv);
+      
+      msgDiv.className = `max-w-[85%] px-4 py-3 rounded-xl ${isBot ? 'bg-blue-100 self-start text-blue-900' : 'bg-blue-600 text-white self-end'} shadow`;
+      msgDiv.innerHTML = `<strong>${sender}:</strong><br>${formatted}`;
+
+      const container = document.createElement("div");
+      container.className = `flex ${isBot ? 'justify-start' : 'justify-end'}`;
+      container.appendChild(msgDiv);
+
+      chatBox.appendChild(container);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
@@ -83,51 +124,34 @@
 
       addMessage("You", input);
       userInput.value = "";
+      chatHistory.push({ role: "user", content: input });
 
-      const messages = [
-        {
-          role: "system",
-          content: `
-You are a friendly, empathetic assistant named ScholarBot who helps students find scholarships to study abroad.
-You greet users warmly, ask about their academic background, preferred countries, and career goals.
-You make helpful suggestions and format your responses as neat bullet or numbered lists.
-Be clear and concise, but encouraging.
-`
-        },
-        {
-          role: "system",
-          content: `
-If a user mentions their stream (engineering, medicine, arts), suggest relevant scholarships and countries in point format.
-If they mention countries (UK, Canada, Germany), suggest country-specific scholarships.
-Always respond with clearly formatted, structured information.
-`
-        }
-      ];
-
+      const extraSystemPrompts = [];
       const inputLower = input.toLowerCase();
+
       if (inputLower.includes("engineering")) {
-        messages.push({
+        extraSystemPrompts.push({
           role: "system",
           content: "User is from engineering background. Suggest STEM scholarships in USA, Germany, and Canada."
         });
       } else if (inputLower.includes("medicine")) {
-        messages.push({
+        extraSystemPrompts.push({
           role: "system",
           content: "User is from medicine background. Suggest scholarships in UK, Australia, and Ireland."
         });
       } else if (inputLower.includes("arts") || inputLower.includes("humanities")) {
-        messages.push({
+        extraSystemPrompts.push({
           role: "system",
           content: "User is from arts/humanities. Recommend creative scholarships and Europe-based programs."
         });
       } else if (inputLower.includes("uk") || inputLower.includes("canada") || inputLower.includes("germany")) {
-        messages.push({
+        extraSystemPrompts.push({
           role: "system",
-          content: `User mentioned ${input}. Provide relevant opportunities and basic eligibility in that country.`
+          content: `User mentioned "${input}". Provide relevant opportunities and basic eligibility in that country.`
         });
       }
 
-      messages.push({ role: "user", content: input });
+      const combinedMessages = [...chatHistory, ...extraSystemPrompts];
 
       try {
         const response = await fetch("http://localhost:3000/api/chat", {
@@ -136,14 +160,14 @@ Always respond with clearly formatted, structured information.
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: "accounts/fireworks/models/deepseek-r1",
-            messages: messages
+            model: "meta-llama/llama-3-70b-instruct",
+            messages: combinedMessages
           })
         });
 
         const data = await response.json();
-        console.log("Backend response:", data); // Add this line
         const reply = data.choices?.[0]?.message?.content || "Sorry, I couldn't fetch a response.";
+        chatHistory.push({ role: "assistant", content: reply });
         addMessage("ScholarBot", reply);
       } catch (error) {
         console.error("Error:", error);
