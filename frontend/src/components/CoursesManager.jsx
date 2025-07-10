@@ -54,22 +54,41 @@ export default function CoursesManager() {
 
   return (
     <section>
-      <h2>Manage Courses</h2>
-      <form onSubmit={handleSubmit} style={{ marginBottom: 16 }}>
-        <input name="name" value={form.name} onChange={handleChange} placeholder="Course Name" required />
-        <input name="description" value={form.description} onChange={handleChange} placeholder="Description" />
-        <button type="submit">{editId ? "Update" : "Add"} Course</button>
-        {editId && <button type="button" onClick={() => { setEditId(null); setForm({ name: "", description: "" }); }}>Cancel</button>}
+      <h2 style={{ marginBottom: 16 }}>Manage Courses</h2>
+      <form onSubmit={handleSubmit} style={{ marginBottom: 24, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input name="name" value={form.name} onChange={handleChange} placeholder="Course Name" required style={{ flex: "1 1 180px", padding: 8 }} />
+        <input name="description" value={form.description} onChange={handleChange} placeholder="Description" style={{ flex: "1 1 240px", padding: 8 }} />
+        <button type="submit" style={{ padding: "8px 16px" }}>{editId ? "Update" : "Add"} Course</button>
+        {editId && <button type="button" onClick={() => { setEditId(null); setForm({ name: "", description: "" }); }} style={{ padding: "8px 16px" }}>Cancel</button>}
       </form>
-      <ul>
-        {courses.map(c => (
-          <li key={c.id}>
-            <b>{c.name}</b> - {c.description}
-            <button onClick={() => handleEdit(c)} style={{ marginLeft: 8 }}>Edit</button>
-            <button onClick={() => handleDelete(c.id)} style={{ marginLeft: 4 }}>Delete</button>
-          </li>
-        ))}
-      </ul>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", background: "#fafbfc" }}>
+          <thead>
+            <tr style={{ background: "#f0f0f0" }}>
+              <th style={{ padding: 8, border: "1px solid #ddd" }}>Name</th>
+              <th style={{ padding: 8, border: "1px solid #ddd" }}>Description</th>
+              <th style={{ padding: 8, border: "1px solid #ddd" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {courses.map(c => (
+              <tr key={c.id}>
+                <td style={{ padding: 8, border: "1px solid #eee" }}>{c.name}</td>
+                <td style={{ padding: 8, border: "1px solid #eee" }}>{c.description}</td>
+                <td style={{ padding: 8, border: "1px solid #eee" }}>
+                  <button onClick={() => handleEdit(c)} style={{ marginRight: 8 }}>Edit</button>
+                  <button onClick={() => handleDelete(c.id)} style={{ color: "#e74c3c" }}>Delete</button>
+                </td>
+              </tr>
+            ))}
+            {courses.length === 0 && (
+              <tr>
+                <td colSpan={3} style={{ textAlign: "center", padding: 16, color: "#888" }}>No courses found.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

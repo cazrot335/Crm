@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -15,64 +9,70 @@ datasource db {
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
+  id       Int                @id @default(autoincrement())
+  email    String             @unique
   name     String
-  email    String @unique
   password String
+  role     Role               @default(STAFF)
   phone    String?
-  role     Role   @default(STAFF)
-  leads    Lead[] @relation("UserLeads")
   courses  CourseEnrollment[]
+  leads    Lead[]             @relation("UserLeads")
 }
 
 model Lead {
-  id             Int         @id @default(autoincrement())
+  id             Int        @id @default(autoincrement())
   name           String
   email          String
   phone          String
   parentContact  String?
   courseInterest String
   source         String
-  status         LeadStatus  @default(NEW)
-  assignedTo     User?       @relation("UserLeads", fields: [assignedToId], references: [id])
+  status         LeadStatus @default(LEAD)
   assignedToId   Int?
-  createdAt      DateTime    @default(now())
-  followUps      FollowUp[]
+  createdAt      DateTime   @default(now())
   admission      Deal?
+  followUps      FollowUp[]
+  assignedTo     User?      @relation("UserLeads", fields: [assignedToId], references: [id])
+
+  @@index([assignedToId], map: "Lead_assignedToId_fkey")
 }
 
 model FollowUp {
-  id      Int      @id @default(autoincrement())
-  date    DateTime
-  type    String   // e.g., Call, Email, Visit
-  remarks String
-  lead    Lead     @relation(fields: [leadId], references: [id])
-  leadId  Int
+  id           Int              @id @default(autoincrement())
+  enrollment   CourseEnrollment @relation(fields: [enrollmentId], references: [id])
+  enrollmentId Int
+  type         String
+  dateTime     DateTime
+  remarks      String?
+  createdAt    DateTime         @default(now())
+  Lead         Lead?            @relation(fields: [leadId], references: [id])
+  leadId       Int?
 }
 
 model Deal {
-  id      Int    @id @default(autoincrement())
-  course  String
-  fee     Float
-  status  String // admitted, rejected, pending
-  lead    Lead   @relation(fields: [leadId], references: [id])
-  leadId  Int    @unique
+  id     Int    @id @default(autoincrement())
+  course String
+  fee    Float
+  leadId Int    @unique
+  status String
+  lead   Lead   @relation(fields: [leadId], references: [id])
 }
 
 model Course {
-  id          Int    @id @default(autoincrement())
+  id          Int                @id @default(autoincrement())
   name        String
   description String?
   enrollments CourseEnrollment[]
 }
 
 model CourseEnrollment {
-  id        Int    @id @default(autoincrement())
-  student   User   @relation(fields: [studentId], references: [id])
+  id        Int        @id @default(autoincrement())
+  student   User       @relation(fields: [studentId], references: [id])
   studentId Int
-  course    Course @relation(fields: [courseId], references: [id])
+  course    Course     @relation(fields: [courseId], references: [id])
   courseId  Int
-  status    LeadStatus @default(NEW)
+  status    LeadStatus @default(LEAD)
+  followUps FollowUp[]
 }
 
 enum Role {
@@ -82,8 +82,9 @@ enum Role {
 }
 
 enum LeadStatus {
-  NEW
-  IN_PROGRESS
+  LEAD
+  FOLLOWUP
+  PAYMENT
   ADMITTED
   REJECTED
 }
