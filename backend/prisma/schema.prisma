@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       Int                @id @default(autoincrement())
+  email    String             @unique
+  name     String
+  password String
+  role     Role               @default(STAFF)
+  phone    String?
+  courses  CourseEnrollment[]
+  leads    Lead[]             @relation("UserLeads")
+}
+
+model Lead {
+  id             Int        @id @default(autoincrement())
+  name           String
+  email          String
+  phone          String
+  parentContact  String?
+  courseInterest String
+  source         String
+  status         LeadStatus @default(LEAD)
+  assignedToId   Int?
+  createdAt      DateTime   @default(now())
+  admission      Deal?
+  followUps      FollowUp[]
+  assignedTo     User?      @relation("UserLeads", fields: [assignedToId], references: [id])
+
+  @@index([assignedToId], map: "Lead_assignedToId_fkey")
+}
+
+model FollowUp {
+  id           Int              @id @default(autoincrement())
+  enrollment   CourseEnrollment @relation(fields: [enrollmentId], references: [id])
+  enrollmentId Int
+  type         String
+  dateTime     DateTime
+  remarks      String?
+  createdAt    DateTime         @default(now())
+  Lead         Lead?            @relation(fields: [leadId], references: [id])
+  leadId       Int?
+}
+
+model Deal {
+  id     Int    @id @default(autoincrement())
+  course String
+  fee    Float
+  leadId Int    @unique
+  status String
+  lead   Lead   @relation(fields: [leadId], references: [id])
+}
+
+model Course {
+  id          Int                @id @default(autoincrement())
+  name        String
+  description String?
+  enrollments CourseEnrollment[]
+}
+
+model CourseEnrollment {
+  id        Int        @id @default(autoincrement())
+  student   User       @relation(fields: [studentId], references: [id])
+  studentId Int
+  course    Course     @relation(fields: [courseId], references: [id])
+  courseId  Int
+  status    LeadStatus @default(LEAD)
+  followUps FollowUp[]
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  STUDENT
+}
+
+enum LeadStatus {
+  LEAD
+  FOLLOWUP
+  PAYMENT
+  ADMITTED
+  REJECTED
+}
