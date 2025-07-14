@@ -4,13 +4,46 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 
 dotenv.config();
-console.log("CWD:", process.cwd());
-console.log("Using API key:", process.env.HF_API_KEY);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+const mockStudentData = {
+  "12345": {
+    name: "Ravi",
+    status: "Application under review",
+    verifiedDocs: ["Passport", "10th Marksheet", "IELTS Score"],
+    nextStep: "Awaiting university response"
+  },
+  "98765": {
+    name: "Sneha",
+    status: "Documents verified, waiting for payment",
+    verifiedDocs: ["Aadhaar", "12th Marksheet"],
+    nextStep: "Pay application fee"
+  }
+};
+
+// ✅ Application status API
+app.get('/api/status/:studentId', async (req, res) => {
+  const studentId = req.params.studentId;
+  const record = mockStudentData[studentId];
+
+  if (!record) {
+    return res.status(404).json({ error: "Student not found" });
+  }
+
+  const summary = `
+Student Name: ${record.name}
+Current Status: ${record.status}
+Verified Documents: ${record.verifiedDocs.join(', ')}
+Next Step: ${record.nextStep}
+  `;
+
+  res.json({ summary });
+});
+
+// ✅ Chatbot API
 app.post('/api/chat', async (req, res) => {
   try {
     const { messages, model } = req.body;
@@ -29,7 +62,6 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
-    // The response format should match what your frontend expects
     res.json(data);
   } catch (err) {
     console.error("API call failed:", err);
@@ -37,4 +69,4 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+app.listen(3000, () => console.log('✅ Server running on http://localhost:3000'));

@@ -5,47 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ScholarBot</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: rgba(59, 130, 246, 0.4);
-      border-radius: 10px;
-    }
-
-    .chat-box ul {
-      list-style-type: disc;
-      padding-left: 1.25rem;
-      margin-top: 0.5rem;
-    }
-
-    .chat-box ol {
-      list-style-type: decimal;
-      padding-left: 1.25rem;
-      margin-top: 0.5rem;
-    }
-
-    .chat-box li {
-      margin-bottom: 0.3rem;
-    }
-  </style>
 </head>
 <body class="bg-gradient-to-br from-blue-100 to-white min-h-screen flex items-center justify-center p-4">
   <div class="w-full max-w-2xl backdrop-blur-md bg-white/60 border border-gray-200 shadow-2xl rounded-3xl p-6">
     <h1 class="text-4xl font-extrabold text-center text-blue-700 mb-6">🎓 ScholarBot</h1>
     
     <div id="chatBox" class="chat-box h-[28rem] overflow-y-auto space-y-4 px-3 py-4 bg-white rounded-xl border border-gray-300 shadow-inner text-base">
-      <!-- Chat messages will appear here -->
     </div>
 
     <form id="chatForm" class="flex mt-4">
-      <input type="text" id="userInput" 
-             class="flex-grow rounded-l-xl border border-gray-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-400" 
-             placeholder="Ask about scholarships, countries, streams..." required />
-      <button type="submit" 
-              class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-r-xl text-base font-medium">
+      <input type="text" id="userInput" class="flex-grow rounded-l-xl border border-gray-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Ask about scholarships, countries, streams..." required />
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-r-xl text-base font-medium">
         Send
       </button>
     </form>
@@ -58,28 +28,34 @@
 
     const greetings = [
       "🎓 Hello there! Ready to find the perfect scholarship for your dream studies abroad?",
-      "👋 Hi! I’m ScholarBot — here to help you explore scholarship opportunities. Let’s get started!",
-      "🌍 Hey! Thinking of studying abroad? I can guide you to the right scholarships. What’s your academic stream?",
-      "✈️ Welcome! I help students like you find the best scholarships to study overseas. What field are you in?"
+      "👋 Hi! I’m ScholarBot — here to help you explore scholarship opportunities.",
+      "🌍 Hey! Thinking of studying abroad? I can guide you to the right scholarships.",
+      "✈️ Welcome! I help students like you find the best scholarships to study overseas."
     ];
 
     const chatHistory = [
-      {
-        role: "system",
-        content: `
-You are a friendly, empathetic assistant named ScholarBot who helps students find scholarships to study abroad.
-You greet users warmly, ask about their academic background, preferred countries, and career goals.
-You make helpful suggestions and format your responses as neat bullet or numbered lists.
-Be clear and concise, but encouraging.`
-      },
-      {
-        role: "system",
-        content: `
-If a user mentions their stream (engineering, medicine, arts), suggest relevant scholarships and countries in point format.
-If they mention countries (UK, Canada, Germany), suggest country-specific scholarships.
-Always respond with clearly formatted, structured information.`
-      }
-    ];
+  {
+    role: "system",
+    content: `
+You are **ScholarBot**, the official AI assistant for EduAdvice CRM. You help students with:
+- Scholarship guidance
+- Course selection
+- University admissions
+- Application tracking
+- Document and payment updates
+- Counselor and ticket support
+
+❗ You MUST NOT answer questions unrelated to education, universities, applications, or student life.  
+If the user asks something off-topic (like cooking, dating, entertainment, news, tech, etc.), politely reply:
+
+> “I'm here to help you with scholarships, admissions, and academic guidance. That question is a bit outside my scope 😊.”
+
+✅ You *can* respond warmly to greetings like "Hi", "Hello", or "How are you?"  
+✅ Always stay polite and structured in your answers, and redirect the student back to relevant topics if needed.
+`
+  }
+];
+
 
     window.addEventListener("DOMContentLoaded", () => {
       const greeting = greetings[Math.floor(Math.random() * greetings.length)];
@@ -128,27 +104,23 @@ Always respond with clearly formatted, structured information.`
 
       const extraSystemPrompts = [];
       const inputLower = input.toLowerCase();
+      const studentId = "12345"; // Replace with dynamic ID from session/login
 
-      if (inputLower.includes("engineering")) {
-        extraSystemPrompts.push({
-          role: "system",
-          content: "User is from engineering background. Suggest STEM scholarships in USA, Germany, and Canada."
-        });
-      } else if (inputLower.includes("medicine")) {
-        extraSystemPrompts.push({
-          role: "system",
-          content: "User is from medicine background. Suggest scholarships in UK, Australia, and Ireland."
-        });
-      } else if (inputLower.includes("arts") || inputLower.includes("humanities")) {
-        extraSystemPrompts.push({
-          role: "system",
-          content: "User is from arts/humanities. Recommend creative scholarships and Europe-based programs."
-        });
-      } else if (inputLower.includes("uk") || inputLower.includes("canada") || inputLower.includes("germany")) {
-        extraSystemPrompts.push({
-          role: "system",
-          content: `User mentioned "${input}". Provide relevant opportunities and basic eligibility in that country.`
-        });
+      if (inputLower.includes("status") || inputLower.includes("where is my application")) {
+        try {
+          const statusRes = await fetch(`http://localhost:3000/api/status/${studentId}`);
+          const statusData = await statusRes.json();
+
+          extraSystemPrompts.push({
+            role: "system",
+            content: `Student asked about their status. CRM says:\n${statusData.summary}`
+          });
+        } catch (err) {
+          extraSystemPrompts.push({
+            role: "system",
+            content: "Unable to fetch student application data. Apologize and guide them to contact support."
+          });
+        }
       }
 
       const combinedMessages = [...chatHistory, ...extraSystemPrompts];
