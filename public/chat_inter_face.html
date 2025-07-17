@@ -9,14 +9,17 @@
 <body class="bg-gradient-to-br from-blue-100 to-white min-h-screen flex items-center justify-center p-4">
   <div class="w-full max-w-2xl backdrop-blur-md bg-white/60 border border-gray-200 shadow-2xl rounded-3xl p-6">
     <h1 class="text-4xl font-extrabold text-center text-blue-700 mb-6">🎓 ScholarBot</h1>
-    
-    <div id="chatBox" class="chat-box h-[28rem] overflow-y-auto space-y-4 px-3 py-4 bg-white rounded-xl border border-gray-300 shadow-inner text-base">
-    </div>
+
+    <div id="chatBox" class="chat-box h-[28rem] overflow-y-auto space-y-4 px-3 py-4 bg-white rounded-xl border border-gray-300 shadow-inner text-base"></div>
 
     <form id="chatForm" class="flex mt-4">
       <input type="text" id="userInput" class="flex-grow rounded-l-xl border border-gray-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Ask about scholarships, countries, streams..." required />
       <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-r-xl text-base font-medium">
         Send
+      </button>
+      <button type="button" id="voiceBtn" class="ml-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-xl">🎙️</button>
+      <button type="button" id="toggleVoiceRead" class="ml-2 bg-gray-100 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-xl border border-blue-500">
+        🔊 Voice Read: Off
       </button>
     </form>
   </div>
@@ -25,6 +28,30 @@
     const chatBox = document.getElementById("chatBox");
     const chatForm = document.getElementById("chatForm");
     const userInput = document.getElementById("userInput");
+    const voiceBtn = document.getElementById("voiceBtn");
+    const toggleVoiceReadBtn = document.getElementById("toggleVoiceRead");
+
+    let voiceReadEnabled = false;
+    let synth = window.speechSynthesis;
+    let selectedVoice = null;
+    let lastBotMessage = "";
+
+    function loadVoices() {
+      const voices = synth.getVoices();
+      if (voices.length) {
+        selectedVoice = voices.find(v => v.name.includes("Google") && v.lang.includes("en")) || voices[0];
+      }
+    }
+
+    loadVoices();
+    setTimeout(loadVoices, 100);
+
+    toggleVoiceReadBtn.addEventListener("click", () => {
+      voiceReadEnabled = !voiceReadEnabled;
+      toggleVoiceReadBtn.textContent = voiceReadEnabled ? "🔊 Voice Read: On" : "🔊 Voice Read: Off";
+      if (!voiceReadEnabled) synth.cancel();
+      else if (lastBotMessage) speak(lastBotMessage);
+    });
 
     const greetings = [
       "🎓 Hello there! Ready to find the perfect scholarship for your dream studies abroad?",
@@ -34,46 +61,45 @@
     ];
 
     const chatHistory = [
-  {
-    role: "system",
-    content: `
-You are **ScholarBot**, the official AI assistant for EduAdvice CRM. You help students with:
-- Scholarship guidance
-- Course selection
-- University admissions
-- Application tracking
-- Document and payment updates
-- Counselor and ticket support
+      {
+        role: "system",
+        content: `You are ScholarBot, the official AI assistant for EduAdvice CRM.
 
-❗ You MUST NOT answer questions unrelated to education, universities, applications, or student life.  
-If the user asks something off-topic (like cooking, dating, entertainment, news, tech, etc.), politely reply:
+✅ You assist users with:
+- Study abroad guidance
+- Scholarships and funding opportunities
+- University applications
+- Application status and document tracking
+- EduAdvice platform support
 
-> “I'm here to help you with scholarships, admissions, and academic guidance. That question is a bit outside my scope 😊.”
+❌ If a user asks a question unrelated to education, admissions, or study abroad (e.g., cooking, dating, general trivia), **do not answer it**.
 
-✅ You *can* respond warmly to greetings like "Hi", "Hello", or "How are you?"  
-✅ Always stay polite and structured in your answers, and redirect the student back to relevant topics if needed.
-`
-  }
-];
+Instead, respond politely with:
+"I’m here to help with EduAdvice, scholarships, and study abroad support. That question seems a little outside my area, but feel free to ask anything related to your education journey!"
 
+✅ You may respond to greetings like "Hi", "Hello", or "How are you?" in a warm, friendly manner.
 
-    window.addEventListener("DOMContentLoaded", () => {
-      const greeting = greetings[Math.floor(Math.random() * greetings.length)];
-      addMessage("ScholarBot", greeting);
-      chatHistory.push({ role: "assistant", content: greeting });
-    });
+Keep your responses short, respectful, and focused on education-related topics only.`
+      }
+    ];
+
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.voice = selectedVoice;
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      if (voiceReadEnabled) synth.speak(utterance);
+    }
 
     function formatMessage(content) {
-      let html = content
-        .replace(/^[-*]\s+(.*)$/gm, '<li>$1</li>')
-        .replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>');
-
+      let html = content.replace(/^[-*]\s+(.*)$/gm, '<li>$1</li>').replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>');
       if (html.match(/<li>/)) {
         const isOrdered = content.trim().match(/^\d+\./);
         const wrapper = isOrdered ? "ol" : "ul";
         html = `<${wrapper}>${html}</${wrapper}>`;
       }
-
       return html.replace(/\n/g, "<br>");
     }
 
@@ -81,68 +107,100 @@ If the user asks something off-topic (like cooking, dating, entertainment, news,
       const msgDiv = document.createElement("div");
       const isBot = sender === "ScholarBot";
       const formatted = formatMessage(message);
-      
       msgDiv.className = `max-w-[85%] px-4 py-3 rounded-xl ${isBot ? 'bg-blue-100 self-start text-blue-900' : 'bg-blue-600 text-white self-end'} shadow`;
       msgDiv.innerHTML = `<strong>${sender}:</strong><br>${formatted}`;
-
       const container = document.createElement("div");
       container.className = `flex ${isBot ? 'justify-start' : 'justify-end'}`;
       container.appendChild(msgDiv);
-
       chatBox.appendChild(container);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
+
+    voiceBtn.addEventListener("click", () => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        addMessage("ScholarBot", "⚠️ Your browser does not support voice recognition.");
+        return;
+      }
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.start();
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        userInput.value = transcript;
+        chatForm.dispatchEvent(new Event('submit'));
+      };
+      recognition.onerror = (event) => {
+        addMessage("ScholarBot", "🎤 Voice recognition error: " + event.error);
+      };
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+      addMessage("ScholarBot", greeting);
+      chatHistory.push({ role: "assistant", content: greeting });
+      lastBotMessage = greeting;
+      if (voiceReadEnabled) speak(greeting);
+    });
 
     chatForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = userInput.value.trim();
       if (!input) return;
-
       addMessage("You", input);
       userInput.value = "";
       chatHistory.push({ role: "user", content: input });
 
+      // 🔹 Check if it's a command like "call ravi", "send text", etc.
+      if (/^(call|message|open|send)\b/i.test(input.toLowerCase())) {
+        try {
+          const cmdRes = await fetch("http://localhost:3000/api/command", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: input })
+          });
+          const cmdData = await cmdRes.json();
+          const reply = cmdData.message || "⚠️ No response from command API.";
+          addMessage("ScholarBot", reply);
+          lastBotMessage = reply;
+          if (voiceReadEnabled) speak(reply);
+        } catch (err) {
+          addMessage("ScholarBot", "❌ Failed to run system command.");
+        }
+        return;
+      }
+
+      // 🔹 Else, proceed to send input to chatbot
       const extraSystemPrompts = [];
       const inputLower = input.toLowerCase();
-      const studentId = "12345"; // Replace with dynamic ID from session/login
-
-      if (inputLower.includes("status") || inputLower.includes("where is my application")) {
+      if (!window.studentId) {
+        const idMatch = input.match(/\b\d{5,}\b/);
+        if (idMatch) window.studentId = idMatch[0];
+      }
+      if (inputLower.includes("status") || inputLower.includes("application")) {
         try {
-          const statusRes = await fetch(`http://localhost:3000/api/status/${studentId}`);
+          const statusRes = await fetch(`http://localhost:3000/api/status/${window.studentId || '12345'}`);
           const statusData = await statusRes.json();
-
-          extraSystemPrompts.push({
-            role: "system",
-            content: `Student asked about their status. CRM says:\n${statusData.summary}`
-          });
+          extraSystemPrompts.push({ role: "system", content: `Student asked about their status. CRM says:\n${statusData.summary}` });
         } catch (err) {
-          extraSystemPrompts.push({
-            role: "system",
-            content: "Unable to fetch student application data. Apologize and guide them to contact support."
-          });
+          extraSystemPrompts.push({ role: "system", content: "Unable to fetch student application data. Apologize and guide them to contact support." });
         }
       }
 
       const combinedMessages = [...chatHistory, ...extraSystemPrompts];
-
       try {
         const response = await fetch("http://localhost:3000/api/chat", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "meta-llama/llama-3-70b-instruct",
-            messages: combinedMessages
-          })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "deepseek/deepseek-r1:free", messages: combinedMessages })
         });
-
         const data = await response.json();
         const reply = data.choices?.[0]?.message?.content || "Sorry, I couldn't fetch a response.";
         chatHistory.push({ role: "assistant", content: reply });
         addMessage("ScholarBot", reply);
+        lastBotMessage = reply;
+        if (voiceReadEnabled) speak(reply);
       } catch (error) {
-        console.error("Error:", error);
         addMessage("ScholarBot", "❌ Oops! Something went wrong. Please try again.");
       }
     });

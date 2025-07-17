@@ -3,6 +3,8 @@ import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
@@ -25,6 +27,19 @@ const mockStudentData = {
     nextStep: "Pay application fee"
   }
 };
+
+// 🔸 Contacts memory file path
+const contactsPath = path.join('./contacts.json');
+
+// 🔹 Load & Save Contacts
+function loadContacts() {
+  if (!fs.existsSync(contactsPath)) fs.writeFileSync(contactsPath, '{}');
+  return JSON.parse(fs.readFileSync(contactsPath, 'utf8'));
+}
+
+function saveContacts(contacts) {
+  fs.writeFileSync(contactsPath, JSON.stringify(contacts, null, 2));
+}
 
 // ✅ GET: Application Status API
 app.get('/api/status/:studentId', (req, res) => {
@@ -101,7 +116,7 @@ app.post('/api/command', (req, res) => {
     }
   }
 
-  // 🔹 WhatsApp: Send a message
+  // 🔸 Match: send the text message "hello" to number +91...
   const sendMsgMatch = lower.match(/send\s+the\s+text\s+message\s+"([^"]+)"\s+to\s+number\s+((?:\+?\d[\d\s\-().]*){10,})/i);
   if (sendMsgMatch) {
     const message = encodeURIComponent(sendMsgMatch[1].trim());
@@ -114,13 +129,13 @@ app.post('/api/command', (req, res) => {
     exec(command, (error) => {
       if (error) return res.json({ message: `❌ Could not open WhatsApp for ${number}` });
       return res.json({
-        message: `✅ Message ready to send to ${number}: "${decodeURIComponent(message)}". Continue in WhatsApp Desktop app.`
+        message: `✅ Message ready to send to ${number}: "${decodeURIComponent(message)}".`
       });
     });
     return;
   }
 
-  // 🔹 WhatsApp: Open chat/call a number
+  // 🔸 Match: call or open +91 number
   const phoneMatch = lower.match(/(?:^|\s)(?:open|call)\s+((?:\+?\d[\d\s\-().]*){10,})/i);
   if (phoneMatch) {
     let number = phoneMatch[1].replace(/\D/g, '');
@@ -134,12 +149,59 @@ app.post('/api/command', (req, res) => {
         return res.json({ message: `❌ Could not open WhatsApp for ${number}` });
       }
       return res.json({
-        message: `📞 WhatsApp chat opened for ${number} in WhatsApp Desktop app.`
+        message: `📞 WhatsApp chat opened for ${number}.`
       });
     });
     return;
   }
 
+  // 🔸 Match: "call ravi +91..." or "message sneha +91..." — store contact
+  const learnMatch = lower.match(/(?:call|message)\s+(\w+)\s+(\+91\d{10})/i);
+  if (learnMatch) {
+    const [, name, number] = learnMatch;
+    const contacts = loadContacts();
+    contacts[name.toLowerCase()] = number;
+    saveContacts(contacts);
+
+    const whatsappURL = `whatsapp://send?phone=${number}`;
+    const command = `start "" "${whatsappURL}"`;
+    exec(command, (error) => {
+      if (error) {
+        return res.json({ message: `❌ Could not open WhatsApp for ${name}` });
+      }
+      return res.json({
+        message: `✅ Saved ${name} and opened WhatsApp for ${number}.`
+      });
+    });
+    return;
+  }
+
+  // 🔸 Match: "call ravi" or "message sneha" — use stored contact
+  const recallMatch = lower.match(/(?:call|message)\s+(\w+)/i);
+  if (recallMatch) {
+    const [, name] = recallMatch;
+    const contacts = loadContacts();
+    const number = contacts[name.toLowerCase()];
+    if (number) {
+      const whatsappURL = `whatsapp://send?phone=${number}`;
+      const command = `start "" "${whatsappURL}"`;
+      exec(command, (error) => {
+        if (error) {
+          return res.json({ message: `❌ Could not open WhatsApp for ${name}` });
+        }
+        return res.json({
+          message: `📞 WhatsApp chat opened for ${name} at ${number}.`
+        });
+      });
+    } else {
+      return res.json({
+        message: `🤖 I don't have a number saved for ${name}. You can teach me using: "call ${name} +91..."`
+      });
+    }
+    return;
+  }
+
+  // 🔹 Fallback
   res.json({ message: "❌ Unknown command." });
 });
 
