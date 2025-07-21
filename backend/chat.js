@@ -12,7 +12,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔹 Mock CRM Data for Application Status
+const NEWS_API_KEY = process.env.NEWS_API_KEY;
+const contactsPath = path.join('./contacts.json');
+
+// 🔹 Load Contacts from JSON
+function loadContacts() {
+  if (!fs.existsSync(contactsPath)) fs.writeFileSync(contactsPath, '{}');
+  return JSON.parse(fs.readFileSync(contactsPath, 'utf8'));
+}
+
+function saveContacts(contacts) {
+  fs.writeFileSync(contactsPath, JSON.stringify(contacts, null, 2));
+}
+
+// 🔸 Mock CRM Data
 const mockStudentData = {
   "12345": {
     name: "Ravi",
@@ -28,27 +41,12 @@ const mockStudentData = {
   }
 };
 
-// 🔸 Contacts memory file path
-const contactsPath = path.join('./contacts.json');
-
-// 🔹 Load & Save Contacts
-function loadContacts() {
-  if (!fs.existsSync(contactsPath)) fs.writeFileSync(contactsPath, '{}');
-  return JSON.parse(fs.readFileSync(contactsPath, 'utf8'));
-}
-
-function saveContacts(contacts) {
-  fs.writeFileSync(contactsPath, JSON.stringify(contacts, null, 2));
-}
-
-// ✅ GET: Application Status API
+// ✅ Status Check API
 app.get('/api/status/:studentId', (req, res) => {
   const studentId = req.params.studentId;
   const record = mockStudentData[studentId];
 
-  if (!record) {
-    return res.status(404).json({ error: "Student not found" });
-  }
+  if (!record) return res.status(404).json({ error: "Student not found" });
 
   const summary = `
 Student Name: ${record.name}
@@ -60,7 +58,53 @@ Next Step: ${record.nextStep}
   res.json({ summary });
 });
 
-// ✅ POST: Chatbot AI Endpoint
+// ✅ News Fetch Helper
+async function fetchNews(url, res) {
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status !== "ok") {
+      return res.status(500).json({ error: "Failed to fetch news" });
+    }
+
+    const articles = data.articles.slice(0, 5).map(a => ({
+      title: a.title,
+      source: a.source.name,
+      url: a.url,
+      publishedAt: a.publishedAt
+    }));
+
+    res.json({ articles });
+  } catch (err) {
+    console.error("News fetch error:", err);
+    res.status(500).json({ error: "News fetch failed" });
+  }
+}
+
+// ✅ News Routes
+app.get('/api/news/apple', (req, res) => {
+  const url = `https://newsapi.org/v2/everything?q=apple&from=2025-07-16&to=2025-07-16&sortBy=popularity&apiKey=${NEWS_API_KEY}`;
+  fetchNews(url, res);
+});
+app.get('/api/news/tesla', (req, res) => {
+  const url = `https://newsapi.org/v2/everything?q=tesla&from=2025-06-17&sortBy=publishedAt&apiKey=${NEWS_API_KEY}`;
+  fetchNews(url, res);
+});
+app.get('/api/news/us-business', (req, res) => {
+  const url = `https://newsapi.org/v2/top-headlines?country=us&category=business&apiKey=${NEWS_API_KEY}`;
+  fetchNews(url, res);
+});
+app.get('/api/news/techcrunch', (req, res) => {
+  const url = `https://newsapi.org/v2/top-headlines?sources=techcrunch&apiKey=${NEWS_API_KEY}`;
+  fetchNews(url, res);
+});
+app.get('/api/news/wsj', (req, res) => {
+  const url = `https://newsapi.org/v2/everything?domains=wsj.com&apiKey=${NEWS_API_KEY}`;
+  fetchNews(url, res);
+});
+
+// ✅ AI Chat Endpoint
 app.post('/api/chat', async (req, res) => {
   try {
     const { messages, model } = req.body;
@@ -86,10 +130,10 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ✅ POST: Command Endpoint for System + WhatsApp Actions
+// ✅ Command Parser
 app.post('/api/command', (req, res) => {
   const { query } = req.body;
-  const lower = query.toLowerCase();
+  const lower = query.toLowerCase().trim();
 
   const commands = {
     "open notepad": "notepad",
@@ -107,7 +151,7 @@ app.post('/api/command', (req, res) => {
   };
 
   for (const key in commands) {
-    if (lower.includes(key)) {
+    if (lower === key) {
       exec(commands[key], (error) => {
         if (error) return res.json({ message: "❌ Command failed: " + error.message });
         return res.json({ message: "✅ Executed: " + key });
@@ -116,92 +160,75 @@ app.post('/api/command', (req, res) => {
     }
   }
 
-  // 🔸 Match: send the text message "hello" to number +91...
-  const sendMsgMatch = lower.match(/send\s+the\s+text\s+message\s+"([^"]+)"\s+to\s+number\s+((?:\+?\d[\d\s\-().]*){10,})/i);
-  if (sendMsgMatch) {
-    const message = encodeURIComponent(sendMsgMatch[1].trim());
-    let number = sendMsgMatch[2].replace(/\D/g, '');
-    if (number.length < 10) {
-      return res.json({ message: `❌ Invalid phone number format.` });
-    }
-    const whatsappURL = `whatsapp://send?phone=${number}&text=${message}`;
-    const command = `start "" "${whatsappURL}"`;
-    exec(command, (error) => {
-      if (error) return res.json({ message: `❌ Could not open WhatsApp for ${number}` });
-      return res.json({
-        message: `✅ Message ready to send to ${number}: "${decodeURIComponent(message)}".`
-      });
-    });
-    return;
-  }
-
-  // 🔸 Match: call or open +91 number
-  const phoneMatch = lower.match(/(?:^|\s)(?:open|call)\s+((?:\+?\d[\d\s\-().]*){10,})/i);
-  if (phoneMatch) {
-    let number = phoneMatch[1].replace(/\D/g, '');
-    if (number.length < 10) {
-      return res.json({ message: `❌ Invalid phone number format.` });
-    }
-    const whatsappURL = `whatsapp://send?phone=${number}`;
-    const command = `start "" "${whatsappURL}"`;
-    exec(command, (error) => {
-      if (error) {
-        return res.json({ message: `❌ Could not open WhatsApp for ${number}` });
-      }
-      return res.json({
-        message: `📞 WhatsApp chat opened for ${number}.`
-      });
-    });
-    return;
-  }
-
-  // 🔸 Match: "call ravi +91..." or "message sneha +91..." — store contact
-  const learnMatch = lower.match(/(?:call|message)\s+(\w+)\s+(\+91\d{10})/i);
-  if (learnMatch) {
-    const [, name, number] = learnMatch;
+  // ➕ Add Contact
+  const addMatch = lower.match(/add contact (\w+)\s+(\+91\d{10})/i);
+  if (addMatch) {
+    const [, name, number] = addMatch;
     const contacts = loadContacts();
     contacts[name.toLowerCase()] = number;
     saveContacts(contacts);
-
-    const whatsappURL = `whatsapp://send?phone=${number}`;
-    const command = `start "" "${whatsappURL}"`;
-    exec(command, (error) => {
-      if (error) {
-        return res.json({ message: `❌ Could not open WhatsApp for ${name}` });
-      }
-      return res.json({
-        message: `✅ Saved ${name} and opened WhatsApp for ${number}.`
-      });
-    });
-    return;
+    return res.json({ message: `✅ Saved contact: ${name} → ${number}` });
   }
 
-  // 🔸 Match: "call ravi" or "message sneha" — use stored contact
-  const recallMatch = lower.match(/(?:call|message)\s+(\w+)/i);
-  if (recallMatch) {
-    const [, name] = recallMatch;
+  // 🟢 Open WhatsApp for saved contact
+  const openMatch = lower.match(/open whatsapp (\w+)/i);
+  if (openMatch) {
+    const [, name] = openMatch;
     const contacts = loadContacts();
     const number = contacts[name.toLowerCase()];
     if (number) {
       const whatsappURL = `whatsapp://send?phone=${number}`;
       const command = `start "" "${whatsappURL}"`;
+
       exec(command, (error) => {
         if (error) {
-          return res.json({ message: `❌ Could not open WhatsApp for ${name}` });
+          // fallback to wa.me
+          const fallbackURL = `https://wa.me/${number}`;
+          return res.json({
+            message: `⚠️ Could not open WhatsApp locally.\n📎 You can manually click here: ${fallbackURL}`
+          });
         }
-        return res.json({
-          message: `📞 WhatsApp chat opened for ${name} at ${number}.`
-        });
+        return res.json({ message: `📲 WhatsApp chat opened for ${name} (${number}).` });
       });
     } else {
       return res.json({
-        message: `🤖 I don't have a number saved for ${name}. You can teach me using: "call ${name} +91..."`
+        message: `❌ Contact "${name}" not found.\nUse: add contact ${name} +91XXXXXXXXXX`
       });
     }
     return;
   }
 
-  // 🔹 Fallback
+  // 📨 Send Message to Number
+  const sendMsgMatch = lower.match(/send\s+the\s+text\s+message\s+"([^"]+)"\s+to\s+number\s+((?:\+?\d[\d\s\-().]*){10,})/i);
+  if (sendMsgMatch) {
+    const message = encodeURIComponent(sendMsgMatch[1].trim());
+    let number = sendMsgMatch[2].replace(/\D/g, '');
+    if (number.length < 10) return res.json({ message: `❌ Invalid phone number format.` });
+
+    const whatsappURL = `whatsapp://send?phone=${number}&text=${message}`;
+    const command = `start "" "${whatsappURL}"`;
+    exec(command, (error) => {
+      if (error) return res.json({ message: `❌ Could not open WhatsApp for ${number}` });
+      return res.json({ message: `✅ Message ready to send to ${number}: "${decodeURIComponent(message)}".` });
+    });
+    return;
+  }
+
+  // ☎️ Open WhatsApp by number directly
+  const phoneMatch = lower.match(/(?:^|\s)(?:open|call)\s+((?:\+?\d[\d\s\-().]*){10,})/i);
+  if (phoneMatch) {
+    let number = phoneMatch[1].replace(/\D/g, '');
+    if (number.length < 10) return res.json({ message: `❌ Invalid phone number format.` });
+
+    const whatsappURL = `whatsapp://send?phone=${number}`;
+    const command = `start "" "${whatsappURL}"`;
+    exec(command, (error) => {
+      if (error) return res.json({ message: `❌ Could not open WhatsApp for ${number}` });
+      return res.json({ message: `📞 WhatsApp chat opened for ${number}.` });
+    });
+    return;
+  }
+
   res.json({ message: "❌ Unknown command." });
 });
 
