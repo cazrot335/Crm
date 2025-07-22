@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ScholarBot</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> <!-- 👈 Markdown renderer -->
 </head>
 <body class="bg-gradient-to-br from-blue-100 to-white min-h-screen flex flex-col items-center justify-center p-4">
-  <div class="w-full max-w-2xl backdrop-blur-md bg-white/60 border border-gray-200 shadow-2xl rounded-3xl p-6">
+  <div class="w-full max-w-2xl backdrop-blur-md bg-white/70 border border-gray-200 shadow-2xl rounded-3xl p-6">
     <h1 class="text-4xl font-extrabold text-center text-blue-700 mb-2">🎓 ScholarBot</h1>
     <p class="text-center text-gray-600 mb-4">Your assistant for study abroad and CRM support</p>
 
@@ -31,11 +32,10 @@
 
     <div id="chatBox" class="chat-box h-[28rem] overflow-y-auto space-y-4 px-3 py-4 bg-white rounded-xl border border-gray-300 shadow-inner text-base"></div>
 
-    <form id="chatForm" class="flex mt-4">
-      <input type="text" id="userInput" class="flex-grow rounded-l-xl border border-gray-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Ask about scholarships, documents, commands..." required />
-      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-r-xl text-base font-medium">Send</button>
-      <button type="button" id="voiceBtn" class="ml-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-xl">🎙️</button>
-      <button type="button" id="toggleVoiceRead" class="ml-2 bg-gray-100 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-xl border border-blue-500">🔊 Voice Read: Off</button>
+    <form id="chatForm" class="flex mt-4 space-x-2">
+      <input type="text" id="userInput" class="flex-grow rounded-xl border border-gray-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Ask a question or paste a URL..." required />
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-base font-medium">Send</button>
+      <button type="button" id="scrapeBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl text-base font-medium">Scrape</button>
     </form>
   </div>
 
@@ -45,66 +45,22 @@
     const userInput = document.getElementById("userInput");
     const roleSelector = document.getElementById("roleSelector");
     const apiSelector = document.getElementById("apiSelector");
-    const voiceBtn = document.getElementById("voiceBtn");
-    const toggleVoiceReadBtn = document.getElementById("toggleVoiceRead");
+    const scrapeBtn = document.getElementById("scrapeBtn");
 
-    let voiceReadEnabled = false;
-    let synth = window.speechSynthesis;
-    let selectedVoice = null;
-    let lastBotMessage = "";
     let chatHistory = [];
 
-    const systemPrompts = {
-      student: `You are ScholarBot, helping STUDENTS with study abroad guidance:
-✅ Topics: scholarships, universities, SOPs, visas, intakes, work while studying, education news.
-❌ Don't assist with CRM commands or internal application updates.`,
-      counselor: `You are ScholarBot, helping COUNSELORS manage student applications and provide education-related updates:
-✅ Topics: CRM records, document tracking, WhatsApp actions, application statuses, education news, scholarships, visas.
-❌ Avoid personal academic counseling unless asked.`
-    };
-
-    function loadVoices() {
-      const voices = synth.getVoices();
-      if (voices.length) {
-        selectedVoice = voices.find(v => v.name.includes("Google") && v.lang.includes("en")) || voices[0];
-      }
-    }
-    loadVoices();
-    setTimeout(loadVoices, 100);
-
-    toggleVoiceReadBtn.addEventListener("click", () => {
-      voiceReadEnabled = !voiceReadEnabled;
-      toggleVoiceReadBtn.textContent = voiceReadEnabled ? "🔊 Voice Read: On" : "🔊 Voice Read: Off";
-      if (!voiceReadEnabled) synth.cancel();
-      else if (lastBotMessage) speak(lastBotMessage);
-    });
-
-    function speak(text) {
-      if (!('speechSynthesis' in window)) return;
-      synth.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.voice = selectedVoice;
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      if (voiceReadEnabled) synth.speak(utterance);
-    }
-
     function formatMessage(content) {
-      let html = content.replace(/^[-*]\\s+(.*)$/gm, '<li>$1</li>').replace(/^\\d+\\.\\s+(.*)$/gm, '<li>$1</li>');
-      if (html.match(/<li>/)) {
-        const isOrdered = content.trim().match(/^\\d+\\./);
-        const wrapper = isOrdered ? "ol" : "ul";
-        html = `<${wrapper}>${html}</${wrapper}>`;
-      }
-      return html.replace(/\\n/g, "<br>");
+      // Use marked.js to render Markdown into HTML and apply Tailwind prose
+      return `<div class="prose prose-blue max-w-none">${marked.parse(content)}</div>`;
     }
 
     function addMessage(sender, message) {
       const msgDiv = document.createElement("div");
       const isBot = sender === "ScholarBot";
-      const formatted = formatMessage(message);
-      msgDiv.className = `max-w-[85%] px-4 py-3 rounded-xl ${isBot ? 'bg-blue-100 self-start text-blue-900' : 'bg-blue-600 text-white self-end'} shadow`;
-      msgDiv.innerHTML = `<strong>${sender}:</strong><br>${formatted}`;
+      msgDiv.className = `max-w-[85%] px-4 py-3 rounded-xl ${
+        isBot ? 'bg-blue-100 text-blue-900' : 'bg-blue-600 text-white self-end'
+      } shadow`;
+      msgDiv.innerHTML = `<strong>${sender}:</strong><br>${formatMessage(message)}`;
       const container = document.createElement("div");
       container.className = `flex ${isBot ? 'justify-start' : 'justify-end'}`;
       container.appendChild(msgDiv);
@@ -112,78 +68,67 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    chatForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const input = userInput.value.trim();
-      if (!input) return;
-      addMessage("You", input);
-      userInput.value = "";
-
+    async function sendMessage(input, scrapeUrl = null) {
       const role = roleSelector.value;
       const api = apiSelector.value;
 
-      const lower = input.toLowerCase();
-      const newsKeywords = [
-        { keyword: "education", endpoint: "/api/news/education" },
-        { keyword: "study abroad", endpoint: "/api/news/study-abroad" },
-        { keyword: "scholarship", endpoint: "/api/news/scholarships" },
-        { keyword: "visa", endpoint: "/api/news/visa-updates" },
-        { keyword: "university", endpoint: "/api/news/universities" }
-      ];
+      addMessage("You", input);
 
-      const matched = newsKeywords.find(n => lower.includes(n.keyword));
-
-      if (matched) {
-        try {
-          const response = await fetch(`http://localhost:3000${matched.endpoint}`);
-          const data = await response.json();
-          if (data.articles && data.articles.length > 0) {
-            const newsList = data.articles.map((a, i) => `${i + 1}. <a href=\"${a.url}\" target=\"_blank\">${a.title}</a> (${a.source})`).join("<br>");
-            const newsReply = `📢 Latest ${matched.keyword} Updates:<br>${newsList}`;
-            addMessage("ScholarBot", newsReply);
-            lastBotMessage = newsReply;
-            if (voiceReadEnabled) speak(newsReply);
-          } else {
-            addMessage("ScholarBot", "⚠️ No recent updates found.");
-          }
-        } catch (err) {
-          addMessage("ScholarBot", "❌ Failed to fetch news.");
-        }
-        return;
-      }
-
-      const currentPrompt = {
+      const systemPrompt = {
         role: "system",
-        content: systemPrompts[role]
+        content: role === "student"
+          ? "You are ScholarBot, helping students with study abroad guidance."
+          : "You are ScholarBot, helping counselors manage student applications and education updates."
       };
 
-      const messages = [currentPrompt, ...chatHistory, { role: "user", content: input }];
+      const messages = [systemPrompt, ...chatHistory, { role: "user", content: input }];
       chatHistory.push({ role: "user", content: input });
+
+      addMessage("ScholarBot", scrapeUrl ? "🔄 Scraping website... Please wait." : "⌛ Thinking...");
 
       try {
         const response = await fetch("http://localhost:3000/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: api, messages })
+          body: JSON.stringify({ model: api, messages, scrape: scrapeUrl })
         });
 
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
         const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || "Sorry, I couldn't fetch a response.";
+        const reply = data.choices?.[0]?.message?.content || "⚠️ No response from backend.";
         chatHistory.push({ role: "assistant", content: reply });
         addMessage("ScholarBot", reply);
-        lastBotMessage = reply;
-        if (voiceReadEnabled) speak(reply);
       } catch (err) {
-        addMessage("ScholarBot", "❌ Error connecting to server.");
+        console.error(err);
+        addMessage("ScholarBot", "❌ Error: Unable to connect to server.");
+      }
+    }
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = userInput.value.trim();
+      if (input) {
+        sendMessage(input);
+        userInput.value = "";
+      }
+    });
+
+    scrapeBtn.addEventListener("click", () => {
+      const input = userInput.value.trim();
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const urls = input.match(urlRegex);
+      if (urls && urls[0]) {
+        sendMessage(input, urls[0]);
+        userInput.value = "";
+      } else {
+        alert("⚠️ Please enter a valid URL to scrape.");
       }
     });
 
     window.addEventListener("DOMContentLoaded", () => {
-      const greeting = "👋 Hello! I'm ScholarBot. Please choose your role and API above, then ask your first question.";
+      const greeting = "👋 Hello! Paste a URL and click 'Scrape' for live data, or type a question and click 'Send'.";
       addMessage("ScholarBot", greeting);
       chatHistory.push({ role: "assistant", content: greeting });
-      lastBotMessage = greeting;
-      if (voiceReadEnabled) speak(greeting);
     });
   </script>
 </body>
