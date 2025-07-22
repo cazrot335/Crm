@@ -11,13 +11,22 @@
     <h1 class="text-4xl font-extrabold text-center text-blue-700 mb-2">🎓 ScholarBot</h1>
     <p class="text-center text-gray-600 mb-4">Your assistant for study abroad and CRM support</p>
 
-    <!-- 🔘 Role Selector -->
-    <div class="flex justify-center mb-4">
-      <label class="mr-2 font-medium text-blue-800">You are a:</label>
-      <select id="roleSelector" class="border border-blue-300 rounded-xl px-3 py-2 text-sm text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <option value="student">🎓 Student</option>
-        <option value="counselor">🧑‍💼 Counselor</option>
-      </select>
+    <div class="flex justify-center mb-4 space-x-4">
+      <div>
+        <label class="mr-2 font-medium text-blue-800">You are a:</label>
+        <select id="roleSelector" class="border border-blue-300 rounded-xl px-3 py-2 text-sm text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="student">🎓 Student</option>
+          <option value="counselor">🧑‍💼 Counselor</option>
+        </select>
+      </div>
+      <div>
+        <label class="mr-2 font-medium text-green-800">API:</label>
+        <select id="apiSelector" class="border border-green-300 rounded-xl px-3 py-2 text-sm text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500">
+          <option value="deepseek">DeepSeek</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="gpt-3.5">OpenAI GPT‑3.5</option>
+        </select>
+      </div>
     </div>
 
     <div id="chatBox" class="chat-box h-[28rem] overflow-y-auto space-y-4 px-3 py-4 bg-white rounded-xl border border-gray-300 shadow-inner text-base"></div>
@@ -30,12 +39,12 @@
     </form>
   </div>
 
-  <!-- ✅ FULL FUNCTIONAL SCRIPT BELOW -->
   <script>
     const chatBox = document.getElementById("chatBox");
     const chatForm = document.getElementById("chatForm");
     const userInput = document.getElementById("userInput");
     const roleSelector = document.getElementById("roleSelector");
+    const apiSelector = document.getElementById("apiSelector");
     const voiceBtn = document.getElementById("voiceBtn");
     const toggleVoiceReadBtn = document.getElementById("toggleVoiceRead");
 
@@ -47,24 +56,11 @@
 
     const systemPrompts = {
       student: `You are ScholarBot, helping STUDENTS with study abroad guidance:
-✅ Topics: scholarships, universities, SOPs, visas, intakes, work while studying.
-❌ Don't assist with CRM commands or internal application updates.
-✅ Example student prompts:
-- What scholarships are available in Canada?
-- What is my application status?
-- How do I apply for Germany without IELTS?
-- What documents are required?
-Be friendly, helpful and concise.`,
-
-      counselor: `You are ScholarBot, helping COUNSELORS manage student applications:
-✅ Topics: CRM records, document tracking, WhatsApp actions, status updates.
-❌ Avoid giving visa or student-level advice unless asked.
-✅ Example counselor prompts:
-- Check status of 12345
-- Message Sneha on WhatsApp
-- Open camera for document verification
-- List pending applications
-Be formal, clear and data-focused.`
+✅ Topics: scholarships, universities, SOPs, visas, intakes, work while studying, education news.
+❌ Don't assist with CRM commands or internal application updates.`,
+      counselor: `You are ScholarBot, helping COUNSELORS manage student applications and provide education-related updates:
+✅ Topics: CRM records, document tracking, WhatsApp actions, application statuses, education news, scholarships, visas.
+❌ Avoid personal academic counseling unless asked.`
     };
 
     function loadVoices() {
@@ -94,13 +90,13 @@ Be formal, clear and data-focused.`
     }
 
     function formatMessage(content) {
-      let html = content.replace(/^[-*]\s+(.*)$/gm, '<li>$1</li>').replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>');
+      let html = content.replace(/^[-*]\\s+(.*)$/gm, '<li>$1</li>').replace(/^\\d+\\.\\s+(.*)$/gm, '<li>$1</li>');
       if (html.match(/<li>/)) {
-        const isOrdered = content.trim().match(/^\d+\./);
+        const isOrdered = content.trim().match(/^\\d+\\./);
         const wrapper = isOrdered ? "ol" : "ul";
         html = `<${wrapper}>${html}</${wrapper}>`;
       }
-      return html.replace(/\n/g, "<br>");
+      return html.replace(/\\n/g, "<br>");
     }
 
     function addMessage(sender, message) {
@@ -116,25 +112,6 @@ Be formal, clear and data-focused.`
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    voiceBtn.addEventListener("click", () => {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        addMessage("ScholarBot", "⚠️ Your browser does not support voice recognition.");
-        return;
-      }
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'en-US';
-      recognition.start();
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        userInput.value = transcript;
-        chatForm.dispatchEvent(new Event('submit'));
-      };
-      recognition.onerror = (event) => {
-        addMessage("ScholarBot", "🎤 Voice recognition error: " + event.error);
-      };
-    });
-
     chatForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = userInput.value.trim();
@@ -142,36 +119,39 @@ Be formal, clear and data-focused.`
       addMessage("You", input);
       userInput.value = "";
 
-      const lower = input.toLowerCase();
-      const isSystemCommand =
-        lower.includes("open whatsapp") ||
-        lower.includes("add contact") ||
-        lower.includes("send the text message") ||
-        lower.includes("open camera") ||
-        lower.includes("open chrome") ||
-        lower.includes("lock screen") ||
-        lower.includes("shutdown") ||
-        lower.includes("restart");
+      const role = roleSelector.value;
+      const api = apiSelector.value;
 
-      if (isSystemCommand) {
+      const lower = input.toLowerCase();
+      const newsKeywords = [
+        { keyword: "education", endpoint: "/api/news/education" },
+        { keyword: "study abroad", endpoint: "/api/news/study-abroad" },
+        { keyword: "scholarship", endpoint: "/api/news/scholarships" },
+        { keyword: "visa", endpoint: "/api/news/visa-updates" },
+        { keyword: "university", endpoint: "/api/news/universities" }
+      ];
+
+      const matched = newsKeywords.find(n => lower.includes(n.keyword));
+
+      if (matched) {
         try {
-          const res = await fetch("http://localhost:3000/api/command", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: input })
-          });
-          const data = await res.json();
-          addMessage("ScholarBot", data.message || "✅ Command executed.");
-          lastBotMessage = data.message || "";
-          if (voiceReadEnabled) speak(lastBotMessage);
-          return;
+          const response = await fetch(`http://localhost:3000${matched.endpoint}`);
+          const data = await response.json();
+          if (data.articles && data.articles.length > 0) {
+            const newsList = data.articles.map((a, i) => `${i + 1}. <a href=\"${a.url}\" target=\"_blank\">${a.title}</a> (${a.source})`).join("<br>");
+            const newsReply = `📢 Latest ${matched.keyword} Updates:<br>${newsList}`;
+            addMessage("ScholarBot", newsReply);
+            lastBotMessage = newsReply;
+            if (voiceReadEnabled) speak(newsReply);
+          } else {
+            addMessage("ScholarBot", "⚠️ No recent updates found.");
+          }
         } catch (err) {
-          addMessage("ScholarBot", "❌ Failed to execute command.");
-          return;
+          addMessage("ScholarBot", "❌ Failed to fetch news.");
         }
+        return;
       }
 
-      const role = roleSelector.value;
       const currentPrompt = {
         role: "system",
         content: systemPrompts[role]
@@ -184,7 +164,7 @@ Be formal, clear and data-focused.`
         const response = await fetch("http://localhost:3000/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "deepseek/deepseek-r1:free", messages })
+          body: JSON.stringify({ model: api, messages })
         });
 
         const data = await response.json();
@@ -199,7 +179,7 @@ Be formal, clear and data-focused.`
     });
 
     window.addEventListener("DOMContentLoaded", () => {
-      const greeting = "👋 Hello! I'm ScholarBot. Please choose your role above and ask your first question.";
+      const greeting = "👋 Hello! I'm ScholarBot. Please choose your role and API above, then ask your first question.";
       addMessage("ScholarBot", greeting);
       chatHistory.push({ role: "assistant", content: greeting });
       lastBotMessage = greeting;
