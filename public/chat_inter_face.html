@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ScholarBot</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> <!-- 👈 Markdown renderer -->
-</head>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> </head>
 <body class="bg-gradient-to-br from-blue-100 to-white min-h-screen flex flex-col items-center justify-center p-4">
   <div class="w-full max-w-2xl backdrop-blur-md bg-white/70 border border-gray-200 shadow-2xl rounded-3xl p-6">
     <h1 class="text-4xl font-extrabold text-center text-blue-700 mb-2">🎓 ScholarBot</h1>
@@ -50,7 +49,6 @@
     let chatHistory = [];
 
     function formatMessage(content) {
-      // Use marked.js to render Markdown into HTML and apply Tailwind prose
       return `<div class="prose prose-blue max-w-none">${marked.parse(content)}</div>`;
     }
 
@@ -68,18 +66,28 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
+    function getWelcomeMessage(role) {
+      return role === "student"
+        ? "👋 Hi! I’m ScholarBot. I can help you explore study abroad programs, universities, visas, and scholarships. What would you like to know today?"
+        : "👋 Hello! I’m ScholarBot. I assist counselors in managing student applications, CRM tasks, and education updates. How can I help you today?";
+    }
+
     async function sendMessage(input, scrapeUrl = null) {
       const role = roleSelector.value;
       const api = apiSelector.value;
 
       addMessage("You", input);
 
+      // --- ENHANCED SYSTEM PROMPT ---
+      const systemPromptContent = role === "student"
+        ? "You are ScholarBot, an AI assistant specialized in guiding students on study abroad programs, universities, visas, scholarships, foreign country education policies, living standards, and culture. Focus strictly on these topics. Do not answer questions outside this scope, such as personal queries, general knowledge, entertainment, or irrelevant topics like cooking or weather."
+        : "You are ScholarBot, an AI assistant specialized in assisting counselors with managing student applications, CRM tasks, and providing education updates, including details on foreign education policies, living standards, and culture. Focus strictly on these topics. Do not answer questions outside this scope, such as personal queries, general knowledge, entertainment, or irrelevant topics like cooking or weather.";
+
       const systemPrompt = {
         role: "system",
-        content: role === "student"
-          ? "You are ScholarBot, helping students with study abroad guidance."
-          : "You are ScholarBot, helping counselors manage student applications and education updates."
+        content: systemPromptContent
       };
+      // --- END ENHANCED SYSTEM PROMPT ---
 
       const messages = [systemPrompt, ...chatHistory, { role: "user", content: input }];
       chatHistory.push({ role: "user", content: input });
@@ -95,7 +103,15 @@
 
         if (!response.ok) throw new Error(`Server error: ${response.status}`);
         const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || "⚠️ No response from backend.";
+        let reply = data.choices?.[0]?.message?.content;
+
+        // Polite fallback for unrelated queries
+        if (!reply || reply.toLowerCase().includes("sorry, i can only help")) {
+          reply = role === "student"
+            ? "😊 I’m here to help you with study abroad questions, universities, visas, and scholarships. What would you like to explore today?"
+            : "😊 I can assist you with managing student applications, CRM tasks, or education-related queries. How can I help?";
+        }
+
         chatHistory.push({ role: "assistant", content: reply });
         addMessage("ScholarBot", reply);
       } catch (err) {
@@ -126,9 +142,17 @@
     });
 
     window.addEventListener("DOMContentLoaded", () => {
-      const greeting = "👋 Hello! Paste a URL and click 'Scrape' for live data, or type a question and click 'Send'.";
-      addMessage("ScholarBot", greeting);
-      chatHistory.push({ role: "assistant", content: greeting });
+      const role = roleSelector.value;
+      const welcomeMessage = getWelcomeMessage(role);
+      addMessage("ScholarBot", welcomeMessage);
+      chatHistory.push({ role: "assistant", content: welcomeMessage });
+    });
+
+    roleSelector.addEventListener("change", () => {
+      const role = roleSelector.value;
+      const newWelcome = getWelcomeMessage(role);
+      addMessage("ScholarBot", `🔄 Role changed. ${newWelcome}`);
+      chatHistory.push({ role: "assistant", content: newWelcome });
     });
   </script>
 </body>
