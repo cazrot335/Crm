@@ -22,39 +22,26 @@ const APIFY_API_KEY = process.env.APIFY_API_KEY;
 const NEWS_API_KEY = process.env.NEWS_API_KEY;
 
 // Global (or more accurately, server-side persistent) variable to store last scraped URL and content
-let lastScrapedData = { url: null, content: null, timestamp: null, status: 'idle' }; // Added status
+let lastScrapedData = { url: null, content: null, timestamp: null, status: 'idle' };
 
-// Relevance filter
-function isRelevantAcademicQuery(text) {
+const AI_KNOWLEDGE_CUTOFF = "early 2024";
+
+// ======================= FIX APPLIED ===============================
+// This function now *only* checks for clearly irrelevant patterns.
+// This prevents it from blocking legitimate queries that don't match a specific keyword.
+function isClearlyIrrelevant(text) {
   const lowerCaseText = text.toLowerCase();
-
-  const relevantKeywords = [
-    "study abroad", "scholarship", "visa", "university", "universities", "college", "colleges", "application", "tuition",
-    "ielts", "toefl", "pte", "gre", "gmat", "sat", "act",
-    "living cost", "education", "academic", "foreign education", "culture",
-    "international student", "admissions", "course", "program", "programs", "crm", "student counseling",
-    "sop", "lor", "intake", "ranking", "credits", "postgraduate", "undergraduate", "degree",
-    "masters", "phd", "bachelor", "diploma", "engineering", "humanities", "science", "arts", "business",
-    "canada", "usa", "uk", "australia", "germany", "europe", "country", "countries",
-    "updates", "news", "current", "latest", "changes", "info", "website", "explain", "about" // Added for meta-queries
-  ];
-
   const irrelevantPatterns = [
     /weather|temperature/i,
     /friend|dating|relationship/i,
-    /cook|recipe|kitchen|food/i,
+    /cook|recipe|kitchen|food/i, // This will catch the 'biryani' query
     /play|game|movies|music/i,
     /joke|funny|meme/i,
-    /who are you|what are you|how are you|how old are you/i,
-    /tell me about yourself/i,
-    /chatbot|ai|robot/i
   ];
-
-  const hasRelevantKeyword = relevantKeywords.some(kw => lowerCaseText.includes(kw));
-  const hasIrrelevantPattern = irrelevantPatterns.some(pat => pat.test(lowerCaseText));
-
-  return hasRelevantKeyword && !hasIrrelevantPattern;
+  return irrelevantPatterns.some(pat => pat.test(lowerCaseText));
 }
+// ===================== END OF FIX ==================================
+
 
 // API Endpoint for Real-Time Information (Time)
 app.get('/api/time', (req, res) => {
@@ -83,116 +70,12 @@ app.post('/api/chat', async (req, res) => {
 
     const lowerCaseInput = userInput.toLowerCase().trim();
 
-    // 1. Handle simple greetings FIRST
-    if (["hi", "hello", "hey", "good morning", "good afternoon", "good evening"].includes(lowerCaseInput)) {
-      return res.json({
-        choices: [{
-          message: {
-            content: "👋 Hello there! How can I assist you with study abroad or CRM-related queries today?"
-          }
-        }]
-      });
-    }
-
-    // 2. Handle Self-Introduction/Help Queries
-    const helpPhrases = [
-        "how can you help", "how do you assist", "what can you do", "what are your capabilities",
-        "tell me about yourself", "how do you work", "what is your purpose",
-        "what are you", "who are you", "what else", "what can i ask", "what kind of questions",
-        "help me", "assist me", "how can i use you", "what?"
-    ];
-
-    const lastBotMessageContent = messages.length > 1 && messages[messages.length - 2]?.role === 'assistant' ? messages[messages.length - 2]?.content : '';
-    const isFollowUpToLimitation = lastBotMessageContent.toLowerCase().includes("i’m here to assist with academic") || lastBotMessageContent.toLowerCase().includes("my current tools are limited");
-    const isExactRepeatHelpQuery = lowerCaseInput.includes("how can you assist me with") && lastBotMessageContent.includes("🎓 I'm ScholarBot, your AI assistant specialized in");
-
-    if (helpPhrases.some(phrase => lowerCaseInput.includes(phrase)) || isFollowUpToLimitation) {
-        if (isExactRepeatHelpQuery) {
-            return res.json({
-                choices: [{
-                    message: {
-                        content: "I just explained how I can help! To get specific assistance, please ask me a question about a university, a scholarship, a visa, or paste a website URL to summarize. What's on your mind?"
-                    }
-                }]
-            });
-        }
-        return res.json({
-            choices: [{
-                message: {
-                    content: "🎓 I'm ScholarBot, your AI assistant specialized in **academic and study abroad guidance**, and **CRM support** for counselors.\n\nHere's how I can help:\n\n" +
-                             "**For Students:**\n" +
-                             "- Find information on universities, courses, and programs worldwide.\n" +
-                             "- Get details on scholarships, visas, and living costs for international study.\n" +
-                             "- Understand admission requirements (IELTS, TOEFL, SOP, LOR, etc.).\n" +
-                             "- Provide summaries of educational websites (just paste a URL).\n\n" +
-                             "**For Counselors:**\n" +
-                             "- Assist with student application processes and education updates.\n" +
-                             "- Support CRM tasks related to student management.\n\n" +
-                             "**To get started, just ask me a question about study abroad, education, or paste a website URL to summarize!**"
-                }
-            }]
-        });
-    }
+    // --- ALL hardcoded conversational handlers removed from here ---
+    // Greetings, Self-Introduction/Help, Acknowledgment, Negative Closures
+    // are now expected to be handled by the LLM based on its system prompt and training.
 
 
-    // 3. Handle Acknowledgment/Continuation Phrases
-    const acknowledgmentPhrases = [
-        "ok", "okay", "fine", "alright", "got it",
-        "thanks", "thank you", "ok thanks", "okay thanks", "fine thanks", "alright thanks",
-        "thanks a lot", "thank you so much"
-    ];
-    if (acknowledgmentPhrases.some(phrase => lowerCaseInput.includes(phrase))) {
-        const lastAcademicBotMessage = messages
-            .slice(0, -1)
-            .reverse()
-            .find(msg => msg.role === 'assistant' && msg.content && !msg.content.includes("I’m here to assist with academic") && !msg.content.includes("Could not analyze scraped content."));
-
-        if (lastAcademicBotMessage) {
-            let contextPhrase = "the last topic";
-            if (lastAcademicBotMessage.content.includes("summary of the content from")) {
-                const urlMatch = lastAcademicBotMessage.content.match(/from (https?:\/\/[^\s:]+)/);
-                if (urlMatch) contextPhrase = `the content from ${urlMatch[1]}`;
-            } else if (lastAcademicBotMessage.content.includes("anticipated areas to check for")) {
-                 contextPhrase = `updates for Goa College Of Engineering`;
-            } else if (lastAcademicBotMessage.content.includes("Here's a summary of the content from")) {
-                 contextPhrase = `the website ${lastScrapedData.url}`;
-            } else if (lastAcademicBotMessage.content.includes("current date and time is")) {
-                contextPhrase = `the current time`;
-            } else if (lastAcademicBotMessage.content.includes("🎓 I'm ScholarBot, your AI assistant specialized in")) {
-                contextPhrase = `how I can assist you`;
-            }
-
-
-            return res.json({
-                choices: [{
-                    message: {
-                        content: `You're welcome! Is there anything else you'd like to know about ${contextPhrase} or related academic topics?`
-                    }
-                }]
-            });
-        } else {
-            return res.json({
-                choices: [{
-                    content: "Great! How else can I assist you with study abroad or CRM-related questions?"
-                }]
-            });
-        }
-    }
-
-    // 4. Handle Negative Closing Phrases
-    const negativeClosingPhrases = ["no", "no nothing", "nothing", "that's all", "i'm good", "no thanks", "nothing else"];
-    if (negativeClosingPhrases.includes(lowerCaseInput)) {
-        return res.json({
-            choices: [{
-                message: {
-                    content: "Alright, no problem! Feel free to ask if anything else comes up regarding academic, study abroad, or counselor-related queries. Have a great day!"
-                }
-            }]
-        });
-    }
-
-
-    // 5. Handle Time-related Queries
+    // 1. Handle Time-related Queries (still specific as it needs external tool)
     if (lowerCaseInput.includes("time") && (lowerCaseInput.includes("current") || lowerCaseInput.includes("what is") || lowerCaseInput.includes("now") || lowerCaseInput.includes("update"))) {
         console.log("⏰ Time query detected. Fetching real-time data.");
         try {
@@ -200,8 +83,9 @@ app.post('/api/chat', async (req, res) => {
             const timeData = await timeResponse.json();
 
             const timeContext = `The current date and time is: ${timeData.currentTime} (${timeData.timeZone}).`;
+            // Send the context to the AI model to formulate a natural response
             const messagesForAI = [
-                messages[0],
+                messages[0], // Keep the system prompt
                 { role: "user", content: `The user asked for the current time. Respond with the following information: ${timeContext}. Keep it concise and friendly.` }
             ];
             
@@ -263,12 +147,31 @@ app.post('/api/chat', async (req, res) => {
             return res.json({ choices: [{ message: { content: "I'm sorry, I couldn't fetch the current time right now." } }] });
         }
     }
+
+    // 2. Handle Queries for Future/Real-time Knowledge Limitations (still specific)
+    const futureOrRealtimeKeywords = ["2025", "2026", "future", "real-time", "live", "up-to-the-minute", "as of now"];
+    const hasFutureKeyword = futureOrRealtimeKeywords.some(kw => lowerCaseInput.includes(kw));
+
+    if (hasFutureKeyword && !(scrape || (urls && urls.length > 0))) {
+        // This check can remain simple as it's a very specific context.
+        return res.json({
+            choices: [{
+                message: {
+                    content: `My knowledge base is based on information up to ${AI_KNOWLEDGE_CUTOFF}. I cannot predict future policies or provide true real-time updates unless that information is available on a specific website you provide for scraping. Would you like me to search for general information on this topic from my existing knowledge?`
+                }
+            }]
+        });
+    }
     
-    // 6. Handle Contextual Updates after a scrape
+    // 3. Handle Contextual Updates after a scrape (still specific)
+    const contextualUpdateKeywords = ["update", "news", "current", "latest", "changes"];
+    const refersToPreviousSite = lowerCaseInput.includes("this website") || lowerCaseInput.includes("above website") || lowerCaseInput.includes("the site") || lowerCaseInput.includes("the college") || lowerCaseInput.includes("from above");
+
     if (
         lastScrapedData.url &&
         lastScrapedData.content &&
-        (lowerCaseInput.includes("update") || lowerCaseInput.includes("news") || lowerCaseInput.includes("current") || lowerCaseInput.includes("latest") || lowerCaseInput.includes("changes"))
+        contextualUpdateKeywords.some(kw => lowerCaseInput.includes(kw)) &&
+        refersToPreviousSite
     ) {
         console.log("🔍 Contextual update query detected for last scraped site.");
         const updateAnalysisPrompt = `The user is asking for updates or new information regarding the content previously scraped from ${lastScrapedData.url}. Analyze the following text and identify any recent news, announcements, events, or changes that could be considered "updates".
@@ -294,7 +197,7 @@ app.post('/api/chat', async (req, res) => {
                 const roleForGemini = msg.role === 'system' ? 'user' : (msg.role === 'assistant' ? 'model' : msg.role);
                 if (roleForGemini === lastRole && lastRole !== 'system') {
                     geminiContents[geminiContents.length - 1].parts.push({ text: msg.content });
-                } else {
+                    } else {
                     geminiContents.push({ role: roleForGemini, parts: [{ text: msg.content }] });
                 }
                 lastRole = roleForGemini;
@@ -322,7 +225,7 @@ app.post('/api/chat', async (req, res) => {
             });
             const openaiData = await openaiResponse.json();
             aiResponseContent = openaiData.choices?.[0]?.message?.content || '⚠️ No response from OpenAI API for update analysis.';
-        } else { // DeepSeek
+        } else { // Default to DeepSeek
             const deepseekResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -345,7 +248,90 @@ app.post('/api/chat', async (req, res) => {
     }
 
 
-    // 7. Handle Scraping if a URL is present or explicitly requested
+    // 4. Handle Meta-Commands for Previous Output Refining
+    const refineOutputPhrases = ["specific", "important", "detail", "details", "summarize", "concise", "extract", "shorten", "elaborate", "explain"];
+    const refersToLastOutput = lowerCaseInput.includes("from the above") || lowerCaseInput.includes("this summary") || lowerCaseInput.includes("from your last answer") || lowerCaseInput.includes("the above");
+
+    if (refineOutputPhrases.some(phrase => lowerCaseInput.includes(phrase)) && refersToLastOutput) {
+        if (messages.length >= 2) {
+            const previousBotReply = messages[messages.length - 2]?.content;
+
+            if (previousBotReply && previousBotReply.length > 50) {
+                console.log("🔍 Refining previous output based on user request.");
+                const refinementPrompt = `The user has asked to ${lowerCaseInput.replace('from the above', '').replace('this summary', '').replace('from your last answer', '').trim()}. Please refine the following text accordingly, focusing on academic/educational relevance. Keep it concise and impactful.
+
+                Text to refine:
+                """
+                ${previousBotReply}
+                """`;
+
+                const messagesForAI = [
+                    messages[0],
+                    { role: "user", content: refinementPrompt }
+                ];
+
+                let aiResponseContent = '⚠️ Could not refine the previous information.';
+
+                if (model === "gemini") {
+                    const geminiContents = [];
+                    let lastRole = '';
+                    for (const msg of messagesForAI) {
+                        const roleForGemini = msg.role === 'system' ? 'user' : (msg.role === 'assistant' ? 'model' : msg.role);
+                        if (roleForGemini === lastRole && lastRole !== 'system') {
+                            geminiContents[geminiContents.length - 1].parts.push({ text: msg.content });
+                        } else {
+                            geminiContents.push({ role: roleForGemini, parts: [{ text: msg.content }] });
+                        }
+                        lastRole = roleForGemini;
+                    }
+                    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: geminiContents })
+                    });
+                    const geminiData = await geminiResponse.json();
+                    aiResponseContent = geminiData.candidates?.[0]?.content?.parts[0]?.text || '⚠️ No response from Gemini API for refinement.';
+                } else if (model === "gpt-3.5") {
+                    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: "gpt-3.5-turbo",
+                            messages: messagesForAI,
+                            temperature: 0.7
+                        })
+                    });
+                    const openaiData = await openaiResponse.json();
+                    aiResponseContent = openaiData.choices?.[0]?.message?.content || '⚠️ No response from OpenAI API for refinement.';
+                } else { // DeepSeek
+                    const deepseekResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${HF_API_KEY}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            messages: messagesForAI,
+                            model: "deepseek/deepseek-chat",
+                            stream: false
+                        })
+                    });
+                    const deepseekData = await deepseekResponse.json();
+                    aiResponseContent = deepseekData.choices?.[0]?.message?.content || '⚠️ No response from DeepSeek API for refinement.';
+                }
+
+                return res.json({
+                    choices: [{ message: { content: `✨ Here's the refined information:\n\n${aiResponseContent}` } }]
+                });
+            }
+        }
+    }
+
+
+    // 5. Handle Scraping if a URL is present or explicitly requested
     if (scrape || (urls && urls.length > 0)) {
       console.log("🔗 Scraping triggered");
       const targetUrl = scrape || urls[0];
@@ -358,28 +344,26 @@ app.post('/api/chat', async (req, res) => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                input: {
-                  startUrls: [{ url: targetUrl }],
-                  maxDepth: 1,
-                  maxPagesPerCrawl: 3
-                }
+                startUrls: [{ url: targetUrl }],
+                maxCrawlPages: 5,
+                maxCrawlDepth: 2,
               })
             });
 
             const runData = await runResponse.json();
             if (!runData.data || !runData.data.id) {
               console.error("Apify actor response:", runData);
-              throw new Error('Apify actor run failed');
+              throw new Error('Apify actor run failed to start');
             }
 
             const runId = runData.data.id;
             let status = 'RUNNING';
 
             let attempts = 0;
-            const maxAttempts = 10;
+            const maxAttempts = 15; // Increased attempts for longer scrapes
             while ((status === 'RUNNING' || status === 'READY') && attempts < maxAttempts) {
               console.log(`⏳ Waiting for Apify run... (Attempt ${attempts + 1}/${maxAttempts})`);
-              await new Promise(r => setTimeout(r, 5000));
+              await new Promise(r => setTimeout(r, 6000)); // Increased wait time
               const statusResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_KEY}`);
               const statusData = await statusResponse.json();
               status = statusData.data.status;
@@ -387,14 +371,13 @@ app.post('/api/chat', async (req, res) => {
             }
 
             if (status !== 'SUCCEEDED') {
-                throw new Error(`Apify scraping failed or timed out. Status: ${status}`);
+                throw new Error(`Apify scraping did not succeed. Status: ${status}`);
             }
+            
+            const datasetResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${APIFY_API_KEY}`);
+            const datasetItems = await datasetResponse.json();
 
-            const datasetId = statusData.data.defaultDatasetId;
-            const datasetResponse = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`);
-            const dataset = await datasetResponse.json();
-
-            scrapedContent = dataset.map(item => item.text || item.url).join('\n\n').slice(0, 5000);
+            scrapedContent = datasetItems.map(item => item.text || '').join('\n\n').slice(0, 8000); // Increased content limit
             console.log("✅ Apify scrape successful.");
 
         } else {
@@ -501,42 +484,54 @@ app.post('/api/chat', async (req, res) => {
         });
 
       } else {
+          // *** ENHANCED ERROR MESSAGE IMPLEMENTATION ***
           return res.json({
-              choices: [{ message: { content: `⚠️ Could not retrieve any content from ${targetUrl}. It might be un-scrapeable or empty.` } }]
+              choices: [{ message: { content: `I'm sorry, I couldn't retrieve any content from ${targetUrl}. 😔
+
+This can sometimes happen if:
+* The website has strong anti-scraping measures.
+* The page requires a login or has a complex structure.
+* The URL is incorrect or the page is empty.
+
+**What you can try:**
+Could you please provide a different, more direct link? The main admissions or program page often works best.` } }]
           });
       }
     }
 
-    // 8. If none of the above specific handlers (greeting, acknowledgment, negative closure, help, time, contextual updates, scrape)
-    // caught the query, then apply the general academic relevance filter.
-    if (!isRelevantAcademicQuery(userInput)) {
+    // ======================= FIX APPLIED ===============================
+    // This block now uses the new, more robust isClearlyIrrelevant function
+    // to catch off-topic questions while letting everything else through to the AI.
+    if (isClearlyIrrelevant(userInput)) {
+      console.log("🚫 Detected irrelevant query. Blocking and sending fallback message.");
       return res.json({
         choices: [{
           message: {
-            content: "🤖 I’m here to assist with academic, study abroad, and counselor-related queries only. Please ask something related to education, scholarships, or international study."
+            content: "My purpose is to assist with study abroad and academic counseling. I can't help with topics like cooking or the weather. How can I help you with universities, visas, or applications today?"
           }
         }]
       });
     }
+    // ======================= END OF FIX ===============================
 
-    // This is the main path for *general academic queries* that require AI processing.
+
+    // This is the main path for *general academic queries* and also general conversation (greetings, acknowledgments, negative closures, help requests)
+    // that require AI processing. The LLM will now handle these contextually.
     if (model === "gemini") {
       console.log("🔗 Using Gemini API for general chat");
-      const formattedMessages = messages.map(msg => ({
-        role: msg.role === 'system' ? 'user' : (msg.role === 'assistant' ? 'model' : msg.role),
-        parts: [{ text: msg.content }]
-      }));
-
       const geminiContents = [];
       let lastRole = '';
-      for (const msg of formattedMessages) {
-          if (msg.role === lastRole && lastRole !== 'system') {
-              geminiContents[geminiContents.length - 1].parts.push(...msg.parts);
+      // Correctly format for Gemini: alternate between 'user' and 'model', and handle system prompt
+      messages.forEach(msg => {
+          const roleForGemini = msg.role === 'system' ? 'user' : (msg.role === 'assistant' ? 'model' : msg.role);
+          
+          // Gemini API requires roles to alternate. If the last role was the same, merge content.
+          if (geminiContents.length > 0 && geminiContents[geminiContents.length - 1].role === roleForGemini) {
+              geminiContents[geminiContents.length - 1].parts.push({ text: msg.content });
           } else {
-              geminiContents.push(msg);
+              geminiContents.push({ role: roleForGemini, parts: [{ text: msg.content }] });
           }
-          lastRole = msg.role;
-      }
+      });
 
       const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: 'POST',
@@ -545,12 +540,12 @@ app.post('/api/chat', async (req, res) => {
       });
 
       const geminiData = await geminiResponse.json();
-      if (geminiData.error) {
+      if (!geminiResponse.ok || geminiData.error) {
         console.error("Gemini API Error:", geminiData.error);
-        return res.status(geminiResponse.status).json({ error: geminiData.error.message || 'Gemini API Error' });
+        return res.status(500).json({ error: geminiData.error?.message || 'Gemini API Error' });
       }
 
-      const reply = geminiData.candidates?.[0]?.content?.parts[0]?.text || '⚠️ No response from Gemini API.';
+      const reply = geminiData.candidates?.[0]?.content?.parts.map(part => part.text).join('') || '⚠️ No response from Gemini API.';
       return res.json({ choices: [{ message: { content: reply } }] });
     }
 
