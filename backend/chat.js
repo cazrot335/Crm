@@ -19,29 +19,54 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const HF_API_KEY = process.env.HF_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const APIFY_API_KEY = process.env.APIFY_API_KEY;
-const NEWS_API_KEY = process.env.NEWS_API_KEY;
+const NEWS_API_KEY = process.env.NEWS_API_KEY; // Ensure this is configured for a search API or news API that you intend to use.
 
 // Global (or more accurately, server-side persistent) variable to store last scraped URL and content
 let lastScrapedData = { url: null, content: null, timestamp: null, status: 'idle' };
 
 const AI_KNOWLEDGE_CUTOFF = "early 2024";
 
-// ======================= FIX APPLIED ===============================
-// This function now *only* checks for clearly irrelevant patterns.
-// This prevents it from blocking legitimate queries that don't match a specific keyword.
 function isClearlyIrrelevant(text) {
   const lowerCaseText = text.toLowerCase();
   const irrelevantPatterns = [
     /weather|temperature/i,
     /friend|dating|relationship/i,
-    /cook|recipe|kitchen|food/i, // This will catch the 'biryani' query
+    /cook|recipe|kitchen|food/i,
     /play|game|movies|music/i,
     /joke|funny|meme/i,
   ];
   return irrelevantPatterns.some(pat => pat.test(lowerCaseText));
 }
-// ===================== END OF FIX ==================================
 
+// ======================= NEW FUNCTION FOR WEB SEARCH =======================
+async function performWebSearch(query) {
+    console.log(`🌐 Performing web search for: "${query}"`);
+    try {
+        // This is a placeholder using NEWS_API. For a general web search, you'd use a different API.
+        // Example with News API: Search for articles related to the query
+        const searchUrl = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=relevancy&apiKey=${NEWS_API_KEY}`;
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+
+        if (data.status === 'ok' && data.articles && data.articles.length > 0) {
+            let searchResults = "Here are some recent search results:\n\n";
+            data.articles.slice(0, 3).forEach((article, index) => { // Get top 3 articles
+                searchResults += `**Result ${index + 1}:**\n`;
+                searchResults += `Title: ${article.title}\n`;
+                searchResults += `Source: ${article.source.name}\n`;
+                searchResults += `URL: ${article.url}\n`;
+                searchResults += `Description: ${article.description || 'No description available.'}\n\n`;
+            });
+            return searchResults;
+        } else {
+            return `No recent news or web results found for "${query}" through the integrated search.`;
+        }
+    } catch (error) {
+        console.error("Error during web search:", error);
+        return `I encountered an error while trying to perform a web search for "${query}".`;
+    }
+}
+// ===================== END NEW FUNCTION ==================================
 
 // API Endpoint for Real-Time Information (Time)
 app.get('/api/time', (req, res) => {
@@ -69,11 +94,6 @@ app.post('/api/chat', async (req, res) => {
     const urls = userInput.match(urlRegex);
 
     const lowerCaseInput = userInput.toLowerCase().trim();
-
-    // --- ALL hardcoded conversational handlers removed from here ---
-    // Greetings, Self-Introduction/Help, Acknowledgment, Negative Closures
-    // are now expected to be handled by the LLM based on its system prompt and training.
-
 
     // 1. Handle Time-related Queries (still specific as it needs external tool)
     if (lowerCaseInput.includes("time") && (lowerCaseInput.includes("current") || lowerCaseInput.includes("what is") || lowerCaseInput.includes("now") || lowerCaseInput.includes("update"))) {
@@ -133,7 +153,7 @@ app.post('/api/chat', async (req, res) => {
                     },
                     body: JSON.stringify({
                         messages: messagesForAI,
-                        model: "deepseek/deepseek-chat",
+                        model: "deepseek/deepseek-r1:free",
                         stream: false
                     })
                 });
@@ -149,15 +169,90 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // 2. Handle Queries for Future/Real-time Knowledge Limitations (still specific)
+    const academicKeywords = ["visa", "scholarship", "ranking", "policy", "requirements", "admission", "program", "university", "college", "course", "study abroad"];
+    const realtimeIndicators = ["latest", "recent", "news", "updates", "current", "as of now", "what's new"];
+    
+    const requiresRealtimeSearch = realtimeIndicators.some(kw => lowerCaseInput.includes(kw)) &&
+                                   academicKeywords.some(kw => lowerCaseInput.includes(kw)) &&
+                                   !(scrape || (urls && urls.length > 0)); // Don't search if a URL is provided
+
+    if (requiresRealtimeSearch) {
+        console.log("🔍 Real-time academic search query detected. Initiating web search.");
+        let searchResultsContent = await performWebSearch(userInput);
+
+        const messagesForAI = [
+            messages[0], // System prompt
+            { role: "user", content: `The user asked for current information related to "${userInput}". I performed a web search and found the following:
+            """
+            ${searchResultsContent}
+            """
+            Please summarize the key academic-related points from these results and provide an answer to the user's query. If no relevant results were found, inform the user accordingly. Make sure to cite the sources found in the search results (if any are presented by the search function, e.g., article URLs).` }
+        ];
+
+        let aiResponseContent = '⚠️ Could not get a response from web search analysis.';
+        // Use the selected model to process search results
+        if (model === "gemini") {
+            const geminiContents = [];
+            let lastRole = '';
+            for (const msg of messagesForAI) {
+                const roleForGemini = msg.role === 'system' ? 'user' : (msg.role === 'assistant' ? 'model' : msg.role);
+                if (roleForGemini === lastRole && lastRole !== 'system') {
+                    geminiContents[geminiContents.length - 1].parts.push({ text: msg.content });
+                } else {
+                    geminiContents.push({ role: roleForGemini, parts: [{ text: msg.content }] });
+                }
+                lastRole = roleForGemini;
+            }
+            const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: geminiContents })
+            });
+            const geminiData = await geminiResponse.json();
+            aiResponseContent = geminiData.candidates?.[0]?.content?.parts[0]?.text || '⚠️ No response from Gemini for web search summary.';
+        } else if (model === "gpt-3.5") {
+            const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "gpt-3.5-turbo",
+                    messages: messagesForAI,
+                    temperature: 0.7
+                })
+            });
+            const openaiData = await openaiResponse.json();
+            aiResponseContent = openaiData.choices?.[0]?.message?.content || '⚠️ No response from OpenAI for web search summary.';
+        } else { // DeepSeek
+            const deepseekResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${HF_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    messages: messagesForAI,
+                    model: "deepseek/deepseek-r1:free",
+                    stream: false
+                })
+            });
+            const deepseekData = await deepseekResponse.json();
+            aiResponseContent = deepseekData.choices?.[0]?.message?.content || '⚠️ No response from DeepSeek for web search summary.';
+        }
+        return res.json({ choices: [{ message: { content: aiResponseContent } }] });
+    }
+
+    // Inform about knowledge cutoff if a future/real-time keyword is present without a specific URL or web search trigger
     const futureOrRealtimeKeywords = ["2025", "2026", "future", "real-time", "live", "up-to-the-minute", "as of now"];
     const hasFutureKeyword = futureOrRealtimeKeywords.some(kw => lowerCaseInput.includes(kw));
 
-    if (hasFutureKeyword && !(scrape || (urls && urls.length > 0))) {
-        // This check can remain simple as it's a very specific context.
+    if (hasFutureKeyword && !requiresRealtimeSearch && !(scrape || (urls && urls.length > 0))) {
         return res.json({
             choices: [{
                 message: {
-                    content: `My knowledge base is based on information up to ${AI_KNOWLEDGE_CUTOFF}. I cannot predict future policies or provide true real-time updates unless that information is available on a specific website you provide for scraping. Would you like me to search for general information on this topic from my existing knowledge?`
+                    content: `My knowledge base is based on information up to ${AI_KNOWLEDGE_CUTOFF}. I cannot predict future policies or provide true real-time updates unless that information is available on a specific website you provide for scraping, or if I can find it through a general web search. Would you like me to try a general web search for "${userInput}"?`
                 }
             }]
         });
@@ -234,7 +329,7 @@ app.post('/api/chat', async (req, res) => {
                 },
                 body: JSON.stringify({
                     messages: messagesForAI,
-                    model: "deepseek/deepseek-chat",
+                    model: "deepseek/deepseek-r1:free",
                     stream: false
                 })
             });
@@ -315,7 +410,7 @@ app.post('/api/chat', async (req, res) => {
                         },
                         body: JSON.stringify({
                             messages: messagesForAI,
-                            model: "deepseek/deepseek-chat",
+                            model: "deepseek/deepseek-r1:free",
                             stream: false
                         })
                     });
@@ -471,7 +566,7 @@ app.post('/api/chat', async (req, res) => {
                 },
                 body: JSON.stringify({
                     messages: messagesForAI,
-                    model: "deepseek/deepseek-chat",
+                    model: "deepseek/deepseek-r1:free",
                     stream: false
                 })
             });
@@ -484,7 +579,6 @@ app.post('/api/chat', async (req, res) => {
         });
 
       } else {
-          // *** ENHANCED ERROR MESSAGE IMPLEMENTATION ***
           return res.json({
               choices: [{ message: { content: `I'm sorry, I couldn't retrieve any content from ${targetUrl}. 😔
 
@@ -499,9 +593,6 @@ Could you please provide a different, more direct link? The main admissions or p
       }
     }
 
-    // ======================= FIX APPLIED ===============================
-    // This block now uses the new, more robust isClearlyIrrelevant function
-    // to catch off-topic questions while letting everything else through to the AI.
     if (isClearlyIrrelevant(userInput)) {
       console.log("🚫 Detected irrelevant query. Blocking and sending fallback message.");
       return res.json({
@@ -512,8 +603,6 @@ Could you please provide a different, more direct link? The main admissions or p
         }]
       });
     }
-    // ======================= END OF FIX ===============================
-
 
     // This is the main path for *general academic queries* and also general conversation (greetings, acknowledgments, negative closures, help requests)
     // that require AI processing. The LLM will now handle these contextually.
@@ -579,7 +668,7 @@ Could you please provide a different, more direct link? The main admissions or p
       },
       body: JSON.stringify({
         messages,
-        model: "deepseek/deepseek-chat",
+        model: "deepseek/deepseek-r1:free",
         stream: false
       })
     });

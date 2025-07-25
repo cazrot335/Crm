@@ -21,6 +21,14 @@
     .prose h1, .prose h2, .prose h3 { margin-bottom: 0.5em; margin-top: 1em; }
     .prose ul, .prose ol { margin-top: 0.5em; margin-bottom: 0.5em; }
     .sidebar-item:hover .delete-btn { opacity: 1; }
+    #micBtn.recording {
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+    }
   </style>
 </head>
 <body class="bg-gray-100">
@@ -80,6 +88,9 @@
                 <form id="chatForm" class="w-full">
                     <div class="relative w-full p-2 bg-white border border-gray-200 rounded-2xl shadow-sm flex items-center space-x-2">
                         <textarea id="userInput" class="flex-grow bg-transparent px-3 py-2 text-base text-gray-800 placeholder-gray-500 focus:outline-none resize-none" placeholder="Ask about universities, visas, or paste a URL..." rows="1" required></textarea>
+                        <button type="button" id="micBtn" title="Use Microphone" class="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 hover:text-indigo-600 transition-colors flex-shrink-0">
+                            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 0 1 6 0v8.25a3 3 0 0 1-3 3z" /></svg>
+                        </button>
                         <button type="button" id="scrapeBtn" title="Scrape URL" class="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 hover:text-indigo-600 transition-colors flex-shrink-0">
                              <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
                         </button>
@@ -106,12 +117,50 @@
     const welcomeScreen = document.getElementById('welcome-screen');
     const suggestionCardsContainer = document.getElementById('suggestion-cards');
     const recentChatsContainer = document.getElementById('recent-chats-container');
+    const micBtn = document.getElementById('micBtn');
 
     // --- State Management ---
     let allChats = [];
     let activeChatId = null;
+    let isRecognizing = false;
+    let recognition;
     
-    // ================== NEW PROMPTS START HERE ==================
+    // --- Speech Recognition Setup ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+            isRecognizing = true;
+            micBtn.classList.add('recording', 'text-indigo-600');
+        };
+
+        recognition.onend = () => {
+            isRecognizing = false;
+            micBtn.classList.remove('recording', 'text-indigo-600');
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[event.results.length - 1][0].transcript.trim();
+            userInput.value = transcript;
+            userInput.style.height = 'auto';
+            userInput.style.height = (userInput.scrollHeight) + 'px';
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error", event.error);
+            isRecognizing = false;
+            micBtn.classList.remove('recording', 'text-indigo-600');
+        };
+    } else {
+        micBtn.style.display = 'none';
+        console.warn("Speech Recognition API not supported in this browser.");
+    }
+    
+    // ================== PROMPTS ==================
     const studentSuggestions = [
         { title: "Compare Countries", prompt: "Compare living costs and part-time work opportunities for students in Australia vs. Canada.", icon: "🌏" },
         { title: "Help with SOP", prompt: "Help me outline a Statement of Purpose for a Master's in Business Analytics.", icon: "✍️" },
@@ -128,14 +177,41 @@
         { title: "Compare Program Types", prompt: "What are the pros and cons of a 1-year Master's in the UK vs. a 2-year Master's in the USA?", icon: "⚖️" },
         { title: "Generate JSON", prompt: "Provide a JSON template for storing a student's basic profile information, including academics and test scores.", icon: "💾" }
     ];
-    // =================== NEW PROMPTS END HERE ===================
+    
+    // --- Textarea and Audio ---
+    userInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+    });
 
-
-    // --- Dynamic Resizing for Textarea ---
     userInput.addEventListener('input', () => {
         userInput.style.height = 'auto';
         userInput.style.height = (userInput.scrollHeight) + 'px';
     });
+    
+    function playMessageAudio(buttonElement) {
+        const messageContent = buttonElement.closest('.flex-1').querySelector('.message-content').innerText;
+        if (!messageContent) return;
+
+        speechSynthesis.cancel(); // Stop any currently playing speech
+        const utterance = new SpeechSynthesisUtterance(messageContent);
+        utterance.lang = 'en-US';
+        
+        // Add visual feedback while speaking
+        utterance.onstart = () => {
+            buttonElement.classList.add('text-indigo-600');
+        };
+        utterance.onend = () => {
+            buttonElement.classList.remove('text-indigo-600');
+        };
+        utterance.onerror = () => {
+             buttonElement.classList.remove('text-indigo-600');
+        };
+        
+        speechSynthesis.speak(utterance);
+    }
     
     // --- Chat History Management ---
     function saveChats() {
@@ -249,12 +325,22 @@
         const userAvatar = `<div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">You</div>`;
 
         if (isBot) {
+            const actionButtons = `
+                <div class="mt-3 border-t pt-2 flex items-center gap-2">
+                    <button onclick="playMessageAudio(this)" class="p-1 rounded-md hover:bg-gray-100 text-gray-500 transition-colors" title="Read Aloud">
+                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"></path></svg>
+                    </button>
+                    <button onclick="copyToClipboard(this)" class="p-1 rounded-md hover:bg-gray-100 text-gray-500" title="Copy">
+                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.25H5.25a2 2 0 0 0-2 2v10.5a2 2 0 0 0 2 2h10.5a2 2 0 0 0 2-2V5.25a2 2 0 0 0-2-2H13.5v-1h-1v1H7.5v-1h-1v1zM6.25 5.25h8.5V16a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V5.25z"/></svg>
+                    </button>
+                </div>`;
+            
             msgContainer.innerHTML = `
                 ${botAvatar}
                 <div class="flex-1 min-w-0 bg-white border border-gray-200 rounded-xl rounded-tl-none p-4">
                     <div class="font-bold text-sm text-gray-800 mb-2">ScholarBot</div>
                     <div class="message-content">${formatMessage(message)}</div>
-                     ${isLoadingHistory ? `<div class="mt-3 border-t pt-2"><button onclick="copyToClipboard(this)" class="p-1 rounded-md hover:bg-gray-100 text-gray-500" title="Copy"><svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.25H5.25a2 2 0 0 0-2 2v10.5a2 2 0 0 0 2 2h10.5a2 2 0 0 0 2-2V5.25a2 2 0 0 0-2-2H13.5v-1h-1v1H7.5v-1h-1v1zM6.25 5.25h8.5V16a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V5.25z"/></svg></button></div>` : ''}
+                     ${isLoadingHistory ? actionButtons : ''}
                 </div>`;
         } else {
              msgContainer.innerHTML = `
@@ -293,7 +379,10 @@
             <div class="flex-1 min-w-0 bg-white border border-gray-200 rounded-xl rounded-tl-none p-4">
                 <div class="font-bold text-sm text-gray-800 mb-2">ScholarBot</div>
                 <div class="message-content">${formatMessage(content)}</div>
-                <div class="mt-3 border-t pt-2">
+                <div class="mt-3 border-t pt-2 flex items-center gap-2">
+                    <button onclick="playMessageAudio(this)" class="p-1 rounded-md hover:bg-gray-100 text-gray-500 transition-colors" title="Read Aloud">
+                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"></path></svg>
+                    </button>
                     <button onclick="copyToClipboard(this)" class="p-1 rounded-md hover:bg-gray-100 text-gray-500" title="Copy">
                         <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.25H5.25a2 2 0 0 0-2 2v10.5a2 2 0 0 0 2 2h10.5a2 2 0 0 0 2-2V5.25a2 2 0 0 0-2-2H13.5v-1h-1v1H7.5v-1h-1v1zM6.25 5.25h8.5V16a.75.75 0 0 1-.75.75H6.5a.75.75 0 0 1-.75-.75V5.25z"/></svg>
                     </button>
@@ -346,6 +435,7 @@
     }
 
     async function sendMessage(input, scrapeUrl = null) {
+      speechSynthesis.cancel();
       welcomeScreen.classList.add('hidden');
       chatLog.classList.remove('hidden');
 
@@ -367,7 +457,6 @@
       addThinkingMessage();
       document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
 
-      // ================== NEW SYSTEM PROMPTS START HERE ==================
       const studentSystemPrompt = `You are ScholarBot, a friendly and encouraging personal guide for students planning to study abroad. Your main goal is to make complex topics like visa applications and university selection feel simple and manageable.
 
 **Your core tasks are:**
@@ -387,7 +476,6 @@ Maintain a positive and motivational tone. Use markdown (bolding, lists) to keep
 - **Structured Data Output:** Generating responses in formats like JSON, CSV, or markdown tables when requested.
 
 Your tone must be professional, data-driven, and concise. Get straight to the point and provide actionable information.`;
-      // =================== NEW SYSTEM PROMPTS END HERE ===================
 
       const systemPromptContent = currentChat.role === "student" ? studentSystemPrompt : counselorSystemPrompt;
       const systemPrompt = { role: "system", content: systemPromptContent };
@@ -469,6 +557,15 @@ Your tone must be professional, data-driven, and concise. Get straight to the po
             updateWelcomeScreen();
         } else {
              startNewChat();
+        }
+    });
+    
+    micBtn.addEventListener('click', () => {
+        if (!recognition) return;
+        if (isRecognizing) {
+            recognition.stop();
+        } else {
+            recognition.start();
         }
     });
 
